@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ava AI Job Scout | System Architecture</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #050505;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent: #00d2ff;
+            --accent-glow: rgba(0, 210, 255, 0.5);
+            --text: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 50% 50%, #111 0%, #050505 100%),
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 50px 50px, 50px 50px;
+        }
+
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            background: linear-gradient(90deg, #fff, #aaa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .description {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-top: 8px;
+            max-width: 300px;
+        }
+
+        #info-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: auto;
+        }
+
+        #info-panel.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #info-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+
+        #info-content {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .node-circle {
+            stroke: var(--glass-border);
+            stroke-width: 2px;
+            cursor: pointer;
+            transition: filter 0.3s ease;
+        }
+
+        .node-circle:hover {
+            filter: brightness(1.2) drop-shadow(0 0 10px var(--accent-glow));
+        }
+
+        .link {
+            stroke-opacity: 0.2;
+            stroke-width: 1.5px;
+            fill: none;
+        }
+
+        .link-glow {
+            stroke-opacity: 0.1;
+            stroke-width: 4px;
+            filter: blur(4px);
+        }
+
+        .node-label {
+            font-size: 11px;
+            fill: #fff;
+            pointer-events: none;
+            text-anchor: middle;
+            font-weight: 400;
+            opacity: 0.8;
+            user-select: none;
+        }
+
+        .particle {
+            fill: var(--accent);
+            filter: blur(2px) drop-shadow(0 0 5px var(--accent));
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-overlay">
+        <div class="glass-panel">
+            <h1>Ava Job Scout</h1>
+            <div class="description">High-Fidelity Architecture & Data Flow</div>
+        </div>
+    </div>
+
+    <div id="info-panel" class="glass-panel">
+        <div id="info-title">Component Detail</div>
+        <div id="info-content">Click a node to explore the pipeline architecture.</div>
+    </div>
+
+    <svg id="canvas"></svg>
+
+    <script>
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        const data = {
+            nodes: [
+                // Trigger
+                { id: "Cron", label: "Cron / Sh", group: "Trigger", info: "Initiates the automated scan cycle." },
+                
+                // Ingestion
+                { id: "Scanner", label: "Job Scanner", group: "Ingestion", info: "watcher.py orchestrator." },
+                { id: "History", label: "Applied History", group: "Ingestion", info: "applied_history.json: Prevents duplicates from manual tracking." },
+                { id: "LinkedIn", label: "LinkedIn", group: "Source", info: "High-volume job data." },
+                { id: "Indeed", label: "Indeed", group: "Source", info: "Aggregated job listings." },
+                { id: "GH/Lever", label: "GH/Lever", group: "Source", info: "Direct ATS source." },
+
+                // Verification
+                { id: "Playwright", label: "Playwright", group: "Verification", info: "Bypasses anti-bot 403s." },
+                { id: "jobs.db", label: "jobs.db", group: "Storage", info: "SQLite deduplication store." },
+
+                // AI Intelligence
+                { id: "LangGraph", label: "Scout Brain", group: "Intelligence", info: "LangGraph orchestrator for ranking. Enforces strict 0-2yr experience filter." },
+                { id: "Ollama", label: "Ollama LLM", group: "Intelligence", info: "Dual-model inference (Local + Cloud)." },
+
+                // Fulfillment [Sequential Agentic Engine]
+                { id: "Seq_Loop", label: "Sequential Loop", group: "Fulfillment", info: "Iterates jobs one-by-one to respect free tier rate limits." },
+                { id: "Analyze_Job", label: "Analyze Job", group: "Fulfillment", info: "Flagship Cloud LLM (GLM 5.1 MoE) extracts requirements & company vibe." },
+                { id: "Map_Exp", label: "Map Experience", group: "Fulfillment", info: "Flagship Cloud LLM (GLM 5.1 MoE) bridges needs to specific STAR-method achievements." },
+                { id: "Drafting", label: "Drafting (Local)", group: "Fulfillment", info: "Local LLM (Qwen 2.5 3b) generates the 3-paragraph cover letter." },
+                { id: "Critique", label: "Critique (Cloud)", group: "Fulfillment", info: "Flagship Cloud LLM (GLM 5.1 MoE) performs agentic QC and iterative refinements." },
+                { id: "Drive_Upload", label: "Drive Upload", group: "Fulfillment", info: "Drive API: Creates job folders and uploads tailored documents." },
+                { id: "Collector", label: "Collector", group: "Fulfillment", info: "Syncs processed results before final dispatch." },
+
+
+                // Output
+                { id: "Web_Mgr", label: "Webhook Mgr", group: "Output", info: "Requests library: Dispatches payload to receiver." },
+                { id: "Sheets", label: "G-Sheets", group: "Output", info: "Final pre-filled tracking Sheet with Drive links." }
+            ],
+            links: [
+                { source: "Cron", target: "Scanner" },
+                { source: "History", target: "Scanner" },
+                { source: "LinkedIn", target: "Scanner" },
+                { source: "Indeed", target: "Scanner" },
+                { source: "GH/Lever", target: "Scanner" },
+                { source: "Scanner", target: "Playwright" },
+                { source: "Playwright", target: "jobs.db" },
+                { source: "jobs.db", target: "LangGraph" },
+                { source: "LangGraph", target: "Ollama" },
+                { source: "Ollama", target: "Seq_Loop" },
+                { source: "Seq_Loop", target: "Analyze_Job" },
+                { source: "Analyze_Job", target: "Map_Exp" },
+                { source: "Map_Exp", target: "Drafting" },
+                { source: "Drafting", target: "Critique" },
+                { source: "Critique", target: "Drafting" },
+                { source: "Critique", target: "Drive_Upload" },
+                { source: "Drive_Upload", target: "Collector" },
+                { source: "Collector", target: "Web_Mgr" },
+                { source: "Web_Mgr", target: "Sheets" }
+            ]
+
+        };
+
+        const colors = {
+            "Trigger": "#ff0055",
+            "Ingestion": "#00d2ff",
+            "Source": "#0066ff",
+            "Verification": "#7700ff",
+            "Storage": "#ffbb00",
+            "Intelligence": "#00ff88",
+            "Fulfillment": "#ff9500",
+            "Output": "#ff00ff"
+        };
+
+        const svg = d3.select("#canvas");
+        const g = svg.append("g");
+
+        const simulation = d3.forceSimulation(data.nodes)
+            .force("link", d3.forceLink(data.links).id(d => d.id).distance(80))
+            .force("charge", d3.forceManyBody().strength(-400))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collide", d3.forceCollide().radius(50));
+
+        const linkGlow = g.append("g")
+            .selectAll("line")
+            .data(data.links)
+            .enter().append("line")
+            .attr("class", "link-glow")
+            .attr("stroke", d => colors[data.nodes.find(n => n.id === d.target.id || n.id === d.target).group] || "#444");
+
+        const link = g.append("g")
+            .selectAll("line")
+            .data(data.links)
+            .enter().append("line")
+            .attr("class", "link")
+            .attr("stroke", d => colors[data.nodes.find(n => n.id === d.target.id || n.id === d.target).group] || "#444");
+
+        const node = g.append("g")
+            .selectAll("g")
+            .data(data.nodes)
+            .enter().append("g")
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended))
+            .on("click", (event, d) => showInfo(d));
+
+        node.append("circle")
+            .attr("r", 20)
+            .attr("class", "node-circle")
+            .attr("fill", d => colors[d.group])
+            .attr("fill-opacity", 0.6);
+
+        node.append("text")
+            .attr("dy", 35)
+            .attr("class", "node-label")
+            .text(d => d.label);
+
+        function createParticles() {
+            link.each(function(d) {
+                const linkNode = d3.select(this).node();
+                if (!linkNode) return;
+                const length = linkNode.getTotalLength();
+                svg.append("circle")
+                    .attr("r", 2)
+                    .attr("class", "particle")
+                    .transition()
+                    .duration(1500)
+                    .ease(d3.easeLinear)
+                    .attrTween("transform", function() {
+                        return function(t) {
+                            const p = linkNode.getPointAtLength(t * length);
+                            return `translate(${p.x}, ${p.y})`;
+                        };
+                    })
+                    .on("end", function() { d3.select(this).remove(); });
+            });
+        }
+
+        setInterval(createParticles, 400);
+
+        simulation.on("tick", () => {
+            link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+            linkGlow.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+            node.attr("transform", d => `translate(${d.x}, ${d.y})`);
+        });
+
+        function showInfo(d) {
+            const panel = d3.select("#info-panel");
+            d3.select("#info-title").text(d.label).style("color", colors[d.group]);
+            d3.select("#info-content").text(d.info);
+            panel.classed("visible", true);
+        }
+
+        function dragstarted(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+        function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+        function dragended(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
+    </script>
+</body>
+</html>

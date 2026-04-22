@@ -1,0 +1,204 @@
+{
+  "_meta": {
+    "source": "Aschettino, Ava- Resume.docx",
+    "generated_from": "resume + applied-job history analysis",
+    "last_updated": "2026-04-19",
+    "notes": "applied_job_history_signal: Ava's existing Google Sheet has companies she has already applied to — use this list to DOWN-SCORE duplicate opportunities so the scout surfaces NEW companies and roles she hasn't touched yet."
+  },
+
+  "name": "Ava Aschettino",
+  "location": "New York, New York",
+  "graduation_date": "May 2025",
+  "years_of_experience": 1,
+
+  "education": {
+    "degree": "Bachelor of Science in Media, Culture, and Communication",
+    "school": "New York University",
+    "minors": [
+      "Producing",
+      "The Business of Entertainment, Media & Technology"
+    ],
+    "graduated": "May 2025"
+  },
+
+  "target_titles": [
+    "Coordinator",
+    "Associate",
+    "Assistant",
+    "Marketing Coordinator",
+    "Marketing Assistant",
+    "Communications Coordinator",
+    "Communications Assistant",
+    "Account Coordinator",
+    "Publicity Assistant",
+    "Partnership Coordinator",
+    "Event Coordinator",
+    "PR Assistant",
+    "Production Assistant",
+    "Executive Assistant",
+    "Casting Assistant"
+  ],
+
+  "experience_level": "Entry Level (0-2 years post-grad)",
+
+  "professional_summary": "Adaptable and organized NYU graduate with hands-on experience in marketing, partner relations, administrative support, and event production. Proven ability to multitask in fast-paced environments while maintaining accuracy and professionalism.",
+
+  "work_experience": [
+    {
+      "company": "The Paley Center for Media",
+      "title": "Marketing & Partnerships Assistant",
+      "dates": "October 2024 – Present",
+      "highlights": [
+        "Integrated marketing campaigns for high-profile programming and large-scale events",
+        "Managed partner and client relationships: outreach, new opportunities, timeline collaboration",
+        "Tracked deliverables in Airtable; provided cross-functional administrative support"
+      ],
+      "relevance_signal": "HIGHEST — Current role. Media/entertainment/culture nonprofit. Marketing + Partnerships + Events."
+    },
+    {
+      "company": "Adrienne Stern Casting",
+      "title": "Casting Intern",
+      "dates": "May 2023 – August 2023",
+      "highlights": [
+        "Created deal memos, casting sides, offer letters, film breakdowns, coverage reports",
+        "Managed Breakdown Express, Actors Access, Taft-Hartley forms",
+        "Communicated with agents and clients; compiled actor lists of 80+ candidates"
+      ],
+      "relevance_signal": "HIGH — Talent/entertainment industry experience. Agency environment."
+    },
+    {
+      "company": "Karh",
+      "title": "Public Relations Intern",
+      "dates": "February 2025 – April 2025",
+      "highlights": [
+        "Crafted press releases, managed media relations, generated earned media coverage",
+        "Researched trends to enhance communication strategies",
+        "Communicated with industry professionals"
+      ],
+      "relevance_signal": "HIGH — PR writing, media relations, and communications."
+    },
+    {
+      "company": "Flaire",
+      "title": "Growth Intern",
+      "dates": "December 2024 – February 2025",
+      "highlights": [
+        "Promoted travel app using marketing tactics to increase awareness and downloads",
+        "Researched authentic user connections and feedback loops"
+      ],
+      "relevance_signal": "MEDIUM — Startup marketing/growth experience."
+    },
+    {
+      "company": "NYU Special Collections",
+      "title": "Lead Administrative Assistant",
+      "dates": "May 2024 – May 2025",
+      "highlights": [
+        "Managed front-facing operations, calendar management, patron greeting, communication inquiries",
+        "Organized and maintained accurate records in Airtable"
+      ],
+      "relevance_signal": "MEDIUM — Shows reliability and admin depth."
+    },
+    {
+      "company": "NY Residential Life & Housing Services (NYU)",
+      "title": "Administrative Assistant & Program Assistant",
+      "dates": "September 2023 – August 2025",
+      "highlights": [
+        "Administrative support and event coordination",
+        "Calendar management, phone and email inquiry handling"
+      ],
+      "relevance_signal": "MEDIUM — Shows program coordination and admin."
+    }
+  ],
+
+  "leadership_and_extracurriculars": [
+    {
+      "org": "NYU Lamplighters",
+      "role": "Lead Events Producer & Publicity Specialist",
+      "highlights": [
+        "Directed audience engagement and cross-functional production for theatrical productions",
+        "Managed rehearsals, venue logistics, communications, media outreach",
+        "Performances reaching 600+ attendees"
+      ]
+    },
+    {
+      "org": "NYU Pi Beta Phi",
+      "role": "Vice President of Member Experience",
+      "highlights": [
+        "Led values-driven programming and evaluation initiatives",
+        "Executed large-scale events for 50–150 attendees"
+      ]
+    }
+  ],
+
+  "skills": {
+    "software": [
+      "Microsoft Office Suite (Excel)", "Canva", "Google Suite", "InDesign",
+      "Muck Rack", "Airtable", "DocuSign", "Breakdown Express", "Actors Access",
+      "Adobe Platforms", "Hootsuite", "SharePoint", "ZoomInfo", "Frame",
+      "Storyblocks", "LastPass", "Universe", "Microsoft Dynamics", "Keynote",
+      "CRM tracking", "Co-Pilot", "Illustrator", "Generative AI"
+    ],
+    "communication": [
+      "Partnerships", "Paid Media", "Press Releases", "Pitch Letters", "Marketing",
+      "Social Media", "Public Relations", "Copywriting", "Written Communication"
+    ],
+    "administrative": [
+      "Event Planning", "Email Correspondence", "Operations", "Executive Level Administrative Support",
+      "Customer Service", "Organization", "Budgeting", "Calendar Management",
+      "Deck Design", "Data Entry", "Cue Sheets"
+    ]
+  },
+
+  "industries_of_interest": [
+    "Entertainment",
+    "Talent Agencies",
+    "Theater / Performing Arts",
+    "Media / Broadcast",
+    "Music",
+    "Film / TV Production",
+    "Sports & Live Events",
+    "Nonprofit Arts Organizations",
+    "Public Relations",
+    "Marketing Agencies",
+    "Tech (Creative / Media focus)"
+  ],
+
+  "industry_affinity_scores": {
+    "Talent Agency (CAA, WME, UTA, Gersh)": 10,
+    "Theater / Performing Arts (Playbill companies)": 10,
+    "Media / Broadcast / Streaming": 9,
+    "Entertainment Marketing": 9,
+    "Public Relations Agencies": 8,
+    "Sports & Live Events (MSG, etc.)": 8,
+    "Nonprofit Arts & Culture": 8,
+    "Music Industry": 7,
+    "Casting": 7,
+    "General Marketing Agencies": 6,
+    "Tech with Entertainment/Media focus": 6,
+    "General Corporate / Non-entertainment": 3
+  },
+
+  "scoring_guidance": {
+    "boost_for": [
+      "Job is in entertainment, media, theater, talent, or arts",
+      "Company is a talent agency or casting company",
+      "Role involves marketing, PR, partnerships, or events",
+      "Role involves client or partner relationship management",
+      "Job description mentions Airtable, CRM, or similar tools she knows",
+      "Job is at a company known for a strong creative culture",
+      "Job involves live events, productions, or audience engagement",
+      "Entry-level or coordinator-level position with growth potential"
+    ],
+    "penalize_for": [
+      "Job requires 3+ years of experience",
+      "Job requires specialized technical skills she lacks (engineering, finance, law)",
+      "Food / beverage / hospitality industry with no entertainment angle",
+      "Pure sales role with quota/commission focus",
+      "Healthcare or clinical settings",
+      "Role explicitly says 'Manager' in the title (already filtered upstream)",
+      "Requires relocation outside NYC"
+    ],
+    "context_note": "Ava is a May 2025 NYU graduate. She is applying to entry-level roles in NYC. She wants to work in entertainment, media, or the arts. Her strongest asset is a combination of administrative precision + marketing/PR communication skills + live events experience. The ideal job sits at the intersection of entertainment and communications."
+  },
+
+  "applied_job_history_note": "The user's Google Sheet contains jobs Ava has already applied to, including hyperlinks. Use this as a signal: SLIGHTLY DOWN-SCORE jobs at companies she has already applied to in the current scrape run, since seeing the same company twice adds no new opportunity. Do not eliminate them entirely — a second role at a company she applied to in a different department is still valid."
+}

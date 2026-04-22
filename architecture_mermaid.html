@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ava AI Job Scout | Architecture Flow</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'dark',
+            securityLevel: 'loose',
+            fontFamily: 'Outfit, sans-serif'
+        });
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent: #00d2ff;
+            --text: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
+
+        header {
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff 0%, #888 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            opacity: 0.5;
+            margin-top: 8px;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            background: transparent !important;
+        }
+
+        /* Customize Mermaid Styles */
+        .node rect, .node circle, .node polygon, .node path {
+            fill: rgba(255, 255, 255, 0.05) !important;
+            stroke: rgba(255, 255, 255, 0.2) !important;
+            stroke-width: 1.5px !important;
+        }
+        .cluster rect {
+            fill: rgba(255, 255, 255, 0.02) !important;
+            stroke: rgba(255, 255, 255, 0.1) !important;
+            stroke-dasharray: 5, 5;
+        }
+        .edgePath .path {
+            stroke: var(--accent) !important;
+            stroke-width: 2px !important;
+            opacity: 0.6;
+        }
+        .label {
+            color: #fff !important;
+            font-family: 'Outfit', sans-serif !important;
+        }
+        .edgeLabel {
+            background-color: var(--bg) !important;
+            color: #aaa !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>System Architecture</h1>
+            <div class="subtitle">Ava AI Job Scout Pipeline (Complete)</div>
+        </header>
+
+        <div class="mermaid">
+graph TD
+    subgraph Trigger
+        A[Cron / run.sh]
+    end
+
+    subgraph Ingestion ["1. Data Ingestion (watcher.py)"]
+        B1[General: LinkedIn / Indeed]
+        B2[Favorites: Greenhouse / Lever]
+        B3[Service: Playbill]
+        H1{applied_history.json}
+        B1 & B2 & B3 --> C{New Job?}
+        H1 -- "Filter" --> C
+    end
+
+    subgraph Verification ["2. Playwright Verification"]
+        C -- Yes --> D[Playwright Browser]
+        D --> D1[Bypass Bot Blocks]
+        D1 --> D2[Verify Company Name]
+        D2 --> E{Valid?}
+    end
+
+    subgraph Storage ["3. Storage & Deduplication"]
+        E -- Yes --> F[(jobs.db SQLite)]
+        F --> G[Job Pool]
+    end
+
+    subgraph Intelligence ["4. AI Scout (scout.py)"]
+        G --> H[LangGraph Orchestrator]
+        H --> I[Profile.json]
+        H -- "Strict 0-2yr Filter" --> J[Ollama Inference]
+        J1["Local (Gemma)"]
+        J2["Cloud (Gemma 31b)"]
+        J --> J1
+        J --> J2
+        J1 & J2 --> K[Rank & Select Top 25]
+    end
+
+    subgraph Fulfillment ["5. AI Fulfillment (generator.py)"]
+        K -- "Start" --> L[Sequential Loop]
+        
+        subgraph Tailoring ["LangGraph Agentic Engine"]
+            L --> M1{"1. Analyze Job (GLM 5.1)"}
+            M1 --> M2["2. Map Experience (GLM 5.1)"]
+            M2 --> M3["3. Draft Sections (Local)"]
+            M3 --> M4{"4. Critique Review (GLM 5.1)"}
+            M4 -- "Revise" --> M3
+            M4 -- "Approve" --> N1["5. Finalize Job (Drive)"]
+        end
+
+
+        subgraph Drive ["Google Drive API"]
+            N1 --> N2[Create Folder]
+            N2 --> N3[Upload Cover Letter]
+        end
+
+        N3 -- "Next Job" --> L
+        L -- "All Done" --> O[Collector]
+    end
+
+
+    subgraph Output ["6. Webhook & Tracking"]
+        O -- "Reduce" --> P[Webhook Manager]
+        P -- Payload --> Q[Google Sheets]
+        Q --> R[Pre-filled Tracker + Drive Folder Links]
+    end
+
+    E -- No --> X[Discard]
+    C -- No --> X
+        </div>
+    </div>
+
+</body>
+</html>

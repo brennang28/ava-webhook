@@ -1,0 +1,34 @@
+{
+  "total_rows": 69,
+  "interview_count": 3,
+  "interviews": [
+    {
+      "company": "The Gersh Agency",
+      "role": "Assistant, Branding & Commerical Endorsements",
+      "salary": "$21/hr",
+      "link": "N/A",
+      "status": "First Round Interview"
+    },
+    {
+      "company": "Merkley + Partners",
+      "role": "Assistant Account Executive",
+      "salary": "$50,000",
+      "link": "N/A",
+      "status": "Final Round Interview"
+    },
+    {
+      "company": "TodayTix",
+      "role": "Partnerships Coordinator",
+      "salary": "$55,000 - $62,000",
+      "link": "N/A",
+      "status": "Second Round Interview"
+    }
+  ],
+  "all_statuses": [
+    "Yet to Hear Back",
+    "First Round Interview",
+    "Final Round Interview",
+    "Rejected",
+    "Second Round Interview"
+  ]
+}

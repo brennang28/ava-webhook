@@ -1,0 +1,25 @@
+# Virtual Environment
+venv/
+ENV/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+scratch/logs/
+
+# Sensitive data
+token.json
+credentials.json
+.env
+
+# Scratch/Temporary
+scratch/
+drafts/
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,54 @@
+{
+  "filters": {
+    "titles": [
+      "Coordinator", "Associate", "Assistant", "Event Coordinator", 
+      "Marketing Coordinator", "Communications Coordinator", 
+      "Assistant Account Executive", "Junior Account Executive", 
+      "Account Executive", "Account Coordinator", "Marketing Assistant", 
+      "Publicity Assistant", "Marketing Associate", 
+      "Communications Associate", "Communications Assistant"
+    ],
+    "experience_level": "Entry Level",
+    "location": "New York, NY",
+    "max_age_days": 14
+  },
+  "sources": {
+    "playbill": {
+      "categories": ["Administrative"],
+      "keywords": ["Marketing", "Communications", "Partnerships", "Comms"]
+    },
+    "linkedin": {
+      "search_terms": ["Coordinator", "Associate", "Assistant"]
+    }
+  },
+  "favorite_companies": [
+    {"name": "The Gersh Agency", "slug": "thegershagency", "ats": "greenhouse"},
+    {"name": "Creative Artists Agency", "slug": "caa", "ats": "greenhouse"},
+    {"name": "William Morris Endeavor", "slug": "wme", "ats": "workday"},
+    {"name": "Madison Square Garden", "slug": "msg", "ats": "greenhouse"},
+    {"name": "United Talent Agency", "slug": "uta", "ats": "greenhouse"},
+    {"name": "TodayTix", "slug": "todaytix", "ats": "lever"},
+    {"name": "Anthropic", "slug": "anthropic", "ats": "lever"},
+    {"name": "OpenAI", "slug": "openai", "ats": "greenhouse"},
+    {"name": "Stripe", "slug": "stripe", "ats": "lever"}
+  ],
+  "models": {
+    "reasoning": "gemma4:31b:cloud",
+    "writing": "qwen2.5vl:3b",
+    "scouting": "gemma4:31b:cloud"
+  },
+  "exclusions": {
+    "blocked_companies": [
+      "Walgreens", "Skechers", "Burlington", "Mathnasium", "Claire's", 
+      "Animal Care Centers of NYC", "Ameriwell Care", "Centers Health Care", 
+      "Legends Global", "Cooper Electric", "NYB CPA PC", "Mindify Wellness and Care"
+    ],
+    "blocked_keywords": [
+      "Cashier", "Medical Assistant", "Dental Assistant", "Grill Master", 
+      "Catering Assistant", "Inventory Control", "Return Goods", "Home Care", 
+      "Sales Associate", "Retail Sales", "Staffing Coordinator", "Admissions Coordinator",
+      "Center Director"
+    ]
+  }
+}
+

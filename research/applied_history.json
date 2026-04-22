@@ -1,0 +1,613 @@
+{
+  "majorDimension": "ROWS",
+  "range": "Sheet1!A1:H1002",
+  "values": [
+    [
+      "Company",
+      "Role",
+      "Salary",
+      "Applied?",
+      "Date Applied",
+      "Who did you reach out to?",
+      "Status",
+      "Application Link"
+    ],
+    [
+      "Lincoln Center",
+      "Individual Giving Coordinator",
+      "",
+      "Yes",
+      "11/23/2025",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Universal Music Group",
+      "Administrative Assistant, Finance",
+      "",
+      "Yes",
+      "12/4/2025",
+      "",
+      "Rejected"
+    ],
+    [
+      "92NY",
+      "Development Associate, Foundation and Corporate Philanthropy",
+      "$58,000 - $62,000",
+      "Yes",
+      "12/6/2025",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Universal Music Group",
+      "Administrative Assistant, Digital Marketing",
+      "",
+      "Yes",
+      "12/14/2025",
+      "Brennan Connection",
+      "Rejected"
+    ],
+    [
+      "The Gersh Agency",
+      "Assistant to Digital Agent",
+      "$21/hr",
+      "Yes",
+      "12/31/2025",
+      "",
+      "Rejected"
+    ],
+    [
+      "The Gersh Agency",
+      "Mailroom Floater",
+      "$21/hr",
+      "Yes",
+      "12/31/2025",
+      "",
+      "Rejected"
+    ],
+    [
+      "The Shed",
+      "Development Associate",
+      "$60,000 - $63,000",
+      "Yes",
+      "12/31/2025",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Universal Music Group (Republic Records)",
+      "Administrative Assistant, Marketing Strategy",
+      "$40,350-$55,368",
+      "Yes",
+      "1/6/2026",
+      "Brennan Connection (Trevor)",
+      "Rejected"
+    ],
+    [
+      "CIVIC",
+      "Account Coordinator",
+      "$64,000 - $67,000",
+      "Yes",
+      "1/6/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "The Gersh Agency",
+      "Assistant, Branding & Commerical Endorsements",
+      "$21/hr",
+      "Yes",
+      "1/8/2026",
+      "",
+      "First Round Interview"
+    ],
+    [
+      "Paramount",
+      "CBS Page Program",
+      "$18 - $18.50",
+      "Yes",
+      "1/11/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "William Morris Endeavor",
+      "Assistant, Theater",
+      "$21/hr",
+      "Yes",
+      "1/11/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Worldwide Business Research (WBR)",
+      "Corporate Events Coordinator",
+      "$56,000",
+      "Yes",
+      "1/14/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "New York League of Conservation Voters",
+      "Development & Events Coordinator",
+      "$60,000 - $70,000",
+      "Yes",
+      "1/14/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "align Public Relations",
+      "Publicity Assistant",
+      "tbd...",
+      "Yes",
+      "1/14/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Direct Agents",
+      "Administrative Assistant, Front Desk",
+      "$28.50 - $35/hour",
+      "Yes",
+      "1/16/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Concord",
+      "Talent Development Coordinator (Kidz Bop)",
+      "$50,000 - $55,000",
+      "Yes",
+      "1/22/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "NYU Wasserman Center",
+      "Communications Administrator",
+      "$70,000 - $73,500",
+      "Yes",
+      "1/25/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "FanDuel",
+      "Media Associate",
+      "$35.10 - $43.75",
+      "Yes",
+      "1/28/2026",
+      "",
+      "Rejected"
+    ],
+    [
+      "Versant Media",
+      "Junior Publicist, MS NOW Digital ",
+      "$60,000 - $70,000",
+      "Yes",
+      "1/28/2026",
+      "",
+      "Rejected"
+    ],
+    [
+      "Hearst",
+      "Junior Publicist ",
+      "$50,000 - $55,000",
+      "Yes",
+      "2/2/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "The Frick Collection",
+      "Special Events Assistant",
+      "$30.77",
+      "Yes",
+      "2/3/2026",
+      "Application was down by the time I applied, so I reached out to Miles, the Chief Human Resources Officer, and the Head of Special Events.",
+      "Yet to Hear Back"
+    ],
+    [
+      "FanDuel",
+      "Media Associate",
+      "$35.10/hr - $43.75/hr",
+      "Yes",
+      "2/5/2026",
+      "",
+      "Rejected"
+    ],
+    [
+      "Hearst",
+      "Assistant to the Creative Director, Oprah Daily",
+      "$60,000 - $62,730",
+      "Yes",
+      "2/5/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "AKA NYC",
+      "Client Services Account Coordinator",
+      "$45,000 - $52,000",
+      "Yes",
+      "2/7/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "AKA NYC",
+      "Media Planner",
+      "$58,000 - $65,000",
+      "Yes",
+      "2/7/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Macmillan",
+      "Assistant, Performance Marketing & Audience Development",
+      "$50,000",
+      "Yes",
+      "2/7/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "KORRES",
+      "Community Program Coordinator",
+      "$68,000 - $75,000",
+      "Yes",
+      "2/9/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "CBS Media Ventures",
+      "Sales Assistant",
+      "$50,000 - $55,000",
+      "Yes",
+      "2/10/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Carnegie Hall",
+      "Development Coordinator",
+      "$52,000",
+      "Yes",
+      "2/10/2026",
+      "Reached out to Cory Snoddy",
+      "Yet to Hear Back"
+    ],
+    [
+      "Lincoln Center",
+      "Special Events & Fundraising Coordinator",
+      "$57,000 - $65,000",
+      "Yes",
+      "2/13/2026",
+      "Larry and Abigail from HR list",
+      "Yet to Hear Back"
+    ],
+    [
+      "The New York Public Library",
+      "Development Associate, Development Events",
+      "$50,000 - $53,000",
+      "Yes",
+      "2/17/2026",
+      "",
+      "Rejected"
+    ],
+    [
+      "Brooklyn Conservatory of Music",
+      "Marketing & Communications Associate",
+      "$55,000 - $65,000",
+      "Yes",
+      "2/19/2026",
+      "",
+      "Rejected"
+    ],
+    [
+      "Day One Agency",
+      "Communications Coordinator",
+      "$55,000 - $60,000",
+      "Yes",
+      "2/21/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "AKA NYC",
+      "Assistant Media Planner",
+      "$45,000 -  $55,000",
+      "Yes",
+      "2/22/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "C&G Partners",
+      "Marketing & Communications Coordinator",
+      "$60,000 - $70,000",
+      "Yes",
+      "2/23/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "New York Road Runners",
+      "Strategic Partnerships & Business Development Coordinator",
+      "$55,000",
+      "Yes",
+      "2/23/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "e.l.f. Beauty",
+      "Coordinator, Brand Marketing",
+      "$25 - $30",
+      "Yes",
+      "2/24/2026",
+      "",
+      "Rejected"
+    ],
+    [
+      "MoMA",
+      "Communications & Public Affairs Coordinator",
+      "$65,000 - $70,000",
+      "Yes",
+      "2/27/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Merkley + Partners",
+      "Assistant Account Executive",
+      "$50,000",
+      "Sent Resume",
+      "2/26/2026",
+      "Nadine Zebib (internal referral)",
+      "Final Round Interview"
+    ],
+    [
+      "Scholastic",
+      "Publicity Assistant",
+      "$52,000",
+      "Yes",
+      "3/6/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "TodayTix",
+      "Partnerships Coordinator",
+      "$55,000 - $62,000",
+      "Yes",
+      "4/1/2026",
+      "Dana Strauss & Phil Haas",
+      "Second Round Interview"
+    ],
+    [
+      "Sunshine Sachs Morgan & Lyllis",
+      "Junior Account Executive, Consumer Brand",
+      "$50,000",
+      "Yes",
+      "4/2/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "American Museum of Natural History",
+      "Coordinator, Global Business Development",
+      "$50,000 - $58,000",
+      "Yes",
+      "4/2/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Major League Soccer",
+      "Coordinator, Partnership Marketing",
+      "$45,000 - $55,000",
+      "Yes",
+      "4/2/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Day One Agency",
+      "Communications Coordinator",
+      "$55,000 - $60,000",
+      "Yes",
+      "4/6/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Lincoln Center",
+      "Communications Coordinator",
+      "$56,000 - $68,000",
+      "Yes",
+      "4/7/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Concord",
+      "Partnerships, Events & Marketing",
+      "$50,000 - $55,000",
+      "Yes",
+      "4/15/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Digital Brand Architects",
+      "Coordinator - Brand Partnerships",
+      "$65,000 - $70,000",
+      "Yes",
+      "4/18/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Serino Coyne",
+      "Assistant Account Executive",
+      "$47,500 - $50,000",
+      "Yes",
+      "4/18/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Serino Coyne",
+      "Assistant Media Planner / Buyer",
+      "$47,500 - $50,000",
+      "Yes",
+      "4/18/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Victoria's Secret & Co.",
+      "Brand Operations Coordinator",
+      "$27.60 – $36.23",
+      "Yes",
+      "4/18/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "MoMA",
+      "Ambasz Institute Program Assistant",
+      "$64,023",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Bloomingdale's",
+      "Marketing Special Events Coordinator",
+      "$56,280 - $93,720",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "New York Road Runners",
+      "Marketing Strategy Coordinator",
+      "$55,000",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "iHeart Media",
+      "Account Coordinator",
+      "$19.78 - $24.73",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Corcoran Sunshine Marketing Group",
+      "Marketing Assistant",
+      "$26.24 - $29.50",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "M Booth",
+      "Account Coordinator, Consumer",
+      "$45,000 - $48,000",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "M Booth",
+      "Account Coordinator, Consumer (Beiersdorf)",
+      "$45,000 - $48,000",
+      "Yes",
+      "4/19/2026",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "Bloomberg Philanthropies",
+      "Internal Communications Associate",
+      "$72,000 - $90,000",
+      "Not Yet"
+    ],
+    [
+      "New York University",
+      "Development Associate, Principal Gifts and Development Initiatives",
+      "$70,000 - $77,000",
+      "Not Yet"
+    ],
+    [
+      "New York Historical",
+      "Operations Coordinator",
+      "$55,000 - $60,000",
+      "Not Yet",
+      "",
+      "",
+      "Yet to Hear Back"
+    ],
+    [
+      "iHeart Media",
+      "Coordinator, Social Media Strategist",
+      "$21.16 - $26.45",
+      "Not Yet"
+    ],
+    [
+      "Harpers Collins Publishers",
+      "Assistant Publicist",
+      "$52,500",
+      "Not Yet"
+    ],
+    [
+      "Sphere Entertainment Co.",
+      "Coordinator Media Sales",
+      "$45,000 - $65,000",
+      "Not Yet"
+    ],
+    [
+      "Intercontinental Exchange",
+      "Coordinator, Corporate Affairs",
+      "$60,000 - $70,000",
+      "Not Yet"
+    ],
+    [
+      "MCC Theater",
+      "Learning & Culture Assistant",
+      "$52,000",
+      "Not Yet"
+    ],
+    [
+      "MCC Theater",
+      "Marketing Associate",
+      "$40,000 - $50,000",
+      "Not Yet"
+    ],
+    [
+      "Lacoste",
+      "Digital Coordinator",
+      "$70,000 - $80,000",
+      "Not Yet",
+      "",
+      "",
+      "Yet to Hear Back"
+    ]
+  ]
+}
