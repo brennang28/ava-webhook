@@ -16,3 +16,15 @@
     - [ ] Verify 6 AM execution tomorrow morning
     - [x] Initial Manual Recovery (20 jobs currently processing)
     - [ ] Final Walkthrough
+
+## Document Formatting Task (April 22)
+- [x] **Phase 1: High-Fidelity Infrastructure**
+    - [x] Integrate `python-docx` for binary document handling
+    - [x] Update `AvaGenerator` to load `.docx` templates instead of `.txt`
+    - [x] Implement `_write_to_template` with placeholder replacement and style preservation
+- [x] **Phase 2: Integration & Deployment**
+    - [x] Update Drive upload logic for `MediaInMemoryUpload` with `.docx` MIME type
+    - [x] Clean up legacy `.txt` assets
+- [x] **Phase 3: Verification**
+    - [x] Verified binary buffer generation and content injection via standalone test
+    - [x] Confirmed file size and structure preservation (CL ~7.8K, Resume ~378K)

@@ -4,7 +4,10 @@ import requests
 import json
 import re
 import time
+import io
+import logging
 from typing import Annotated, TypedDict, List, Dict, Any
+from docx import Document
 from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -12,6 +15,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 from dotenv import load_dotenv
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -30,6 +37,7 @@ class JobProcessState(TypedDict):
     final_resume_draft: str
     revision_count: int
     critique: str
+    accuracy_report: str
     folder_link: str
 
 class AvaGenerator:
@@ -48,36 +56,65 @@ class AvaGenerator:
         writing_model = models_config.get("writing", "qwen2.5vl:3b")
 
         # 1. Models
+        cloud_url = os.getenv("OLLAMA_CLOUD_URL")
         desktop_url = os.getenv("DESKTOP_OLLAMA_URL", "http://127.0.0.1:11434")
+        api_key = os.getenv("OLLAMA_API_KEY")
 
-        # Reasoning Model (Gemma 4 small)
-        self.reasoning_llm = ChatOllama(
-            model=reasoning_model,
-            base_url=desktop_url
-        )
+        # Reasoning Model
+        if ":cloud" in reasoning_model and cloud_url:
+            logger.info(f"Using Ollama Cloud for reasoning ({reasoning_model})")
+            self.reasoning_llm = ChatOllama(
+                model=reasoning_model,
+                base_url=cloud_url,
+                headers={"Authorization": f"Bearer {api_key}"} if api_key else {}
+            )
+        else:
+            self.reasoning_llm = ChatOllama(
+                model=reasoning_model,
+                base_url=desktop_url
+            )
 
-        # Writing Model (Qwen 2.5 local)
-        self.writing_llm = ChatOllama(
-            model=writing_model,
-            base_url=desktop_url
-        )
+        # Writing Model
+        if ":cloud" in writing_model and cloud_url:
+            self.writing_llm = ChatOllama(
+                model=writing_model,
+                base_url=cloud_url,
+                headers={"Authorization": f"Bearer {api_key}"} if api_key else {}
+            )
+        else:
+            self.writing_llm = ChatOllama(
+                model=writing_model,
+                base_url=desktop_url
+            )
 
-        # 2. Context
-        self.resume_text = self._load_context("assets/resume.txt")
-        self.template_text = self._load_context("assets/template.txt")
+        # 2. Context paths
+        self.resume_path = "assets/Aschettino, Ava- Resume.docx"
+        self.template_path = "assets/Aschettino, Ava - Cover Letter Template.docx"
+        
+        # Load text for LLM
+        self.resume_text = self._load_context(self.resume_path)
+        self.template_text = self._load_context(self.template_path)
         
         # 3. Main Workflow
         self.workflow = self._build_graph()
         
     def _load_context(self, path: str) -> str:
-        if os.path.exists(path):
+        if not os.path.exists(path):
+            return ""
+        
+        if path.endswith(".docx"):
+            try:
+                doc = Document(path)
+                return "\n".join([p.text for p in doc.paragraphs])
+            except Exception as e:
+                print(f"Error extracting text from docx: {e}")
+                return ""
+        else:
             with open(path, 'r') as f:
                 return f.read()
-        return ""
 
     def _build_graph(self) -> StateGraph:
         builder = StateGraph(OverallState)
-        # Sequential processing to respect free tier rate limits
         builder.add_node("process_jobs", self._process_jobs_sequentially)
         builder.add_node("send_webhooks", self._send_webhooks)
         
@@ -90,7 +127,6 @@ class AvaGenerator:
         results = []
         for job in state["jobs"]:
             print(f"--- Processing {job.get('company')} sequentially ---")
-            # Create a localized job process state
             job_state: JobProcessState = {
                 "job": job,
                 "resume_text": self.resume_text,
@@ -104,27 +140,22 @@ class AvaGenerator:
                 "folder_link": ""
             }
             
-            # Run the mini-workflow for this job manually to ensure sequence
             job_state.update(self._analyze_job(job_state))
             job_state.update(self._map_experience(job_state))
             
-            # Loop for revisions
             while job_state["revision_count"] < 2:
                 job_state.update(self._draft_sections(job_state))
+                job_state.update(self._verify_accuracy(job_state))
                 job_state.update(self._critique_review(job_state))
                 if "EXCELLENT" in job_state.get("critique", "").upper():
                     break
             
-            # Finalize
             job_state.update(self._finalize_job(job_state))
             results.extend(job_state.get("results", []))
-            
-            # Small cooldown to prevent rate-limit bursts
             time.sleep(2)
             
         return {"results": results}
 
-    # --- Utility ---
     def _parse_json(self, text: str) -> Any:
         clean_text = re.sub(r'```json\s*|\s*```', '', text).strip()
         try:
@@ -138,12 +169,10 @@ class AvaGenerator:
                     pass
         return {"raw": text}
 
-    # --- Worker Nodes ---
-
     def _analyze_job(self, state: JobProcessState):
         job = state["job"]
         print(f"--- [Node: Analyze Job] starting for {job.get('company')} ---")
-        prompt = f"Analyze this job description for Ava Aschettino:\nRole: {job.get('role')}\nCompany: {job.get('company')}\nDescription: {job.get('description', 'No description provided')}\n\nIdentify:\n1. Top 3-4 core requirements (technical or soft skills).\n2. The company 'vibe' (e.g., creative, corporate, mission-driven).\n3. The primary problem this role solves for the team.\n\nReturn as a concise JSON object with 'requirements', 'vibe', and 'problem'."
+        prompt = f"Analyze this job description for Ava Aschettino:\nRole: {job.get('role')}\nCompany: {job.get('company')}\nDescription: {job.get('description', 'No description provided')}\n\nIdentify:\n1. Top 3-4 core requirements.\n2. Company vibe.\n3. Primary problem to solve.\n\nReturn JSON: 'requirements', 'vibe', 'problem'."
         
         res = self.reasoning_llm.invoke([SystemMessage(content="You are a requirement analyst."), HumanMessage(content=prompt)])
         analysis = self._parse_json(res.content)
@@ -152,11 +181,10 @@ class AvaGenerator:
     def _map_experience(self, state: JobProcessState):
         analysis = state["job_analysis"]
         resume = state["resume_text"]
-        print(f"--- [Node: Map Experience] mapping requirements to STAR evidence ---")
-        
-        prompt = f"Map Ava's specific experience to these job requirements:\nJob Requirements: {analysis.get('requirements')}\nVibe: {analysis.get('vibe')}\n\nResume:\n{resume}\n\nFor each requirement, find the single most relevant bullet point or achievement from Ava's resume. Rephrase it using the STAR method if possible, emphasizing metrics.\nReturn as a list of 'mapping' objects: {{\"requirement\": \"...\", \"evidence\": \"...\"}}."
+        print(f"--- [Node: Map Experience] mapping to STAR evidence ---")
+        prompt = f"Map Ava's experience to requirements: {analysis.get('requirements')}\nResume:\n{resume}\nReturn JSON list of 'mapping' objects: {{\"requirement\": \"...\", \"evidence\": \"...\"}}."
 
-        res = self.reasoning_llm.invoke([SystemMessage(content="You are a strategic career matcher."), HumanMessage(content=prompt)])
+        res = self.reasoning_llm.invoke([SystemMessage(content="You are a career matcher."), HumanMessage(content=prompt)])
         mapping = self._parse_json(res.content)
         return {"mapped_experience": mapping}
 
@@ -165,108 +193,189 @@ class AvaGenerator:
         analysis = state["job_analysis"]
         mapping = state["mapped_experience"]
         template = state["template_text"]
-        print(f"--- [Node: Draft Sections] generating letter (Revision: {state['revision_count']}) ---")
-        
-        prompt = f"Draft a 3-paragraph cover letter following this template strictly:\nTemplate:\n{template}\n\nContext:\nJob: {job.get('role')} at {job.get('company')}\nKey Needs: {analysis}\nEvidence to leverage: {mapping}\n\nInstructions:\n1. Paragraph 1: Mention passion for {job.get('company')}'s mission and hook them.\n2. Paragraph 2: Bridge the needs with the specific evidence from the mapping.\n3. Paragraph 3: Call to action and proactive closing.\n4. STRICTLY MAINTAIN 3 PARAGRAPHS.\n\nReturn the full text of the cover letter."
+        print(f"--- [Node: Draft Sections] Revision: {state['revision_count']} ---")
+        prompt = (
+            f"Draft a 3-paragraph cover letter strictly following this template context:\n{template}\n\n"
+            f"CONTEXT:\n"
+            f"- Candidate: Ava Aschettino (EXTERNAL applicant)\n"
+            f"- Current Role: Marketing & Partnerships Assistant at The Paley Center for Media\n"
+            f"- Target Role: {job.get('role')} at {job.get('company')}\n\n"
+            f"INSTRUCTIONS:\n"
+            f"1. Ava does NOT currently work at {job.get('company')}. Do not claim she does.\n"
+            f"2. Use ONLY the following evidence for factual claims: {mapping}\n"
+            f"3. Maintain a professional, persuasive tone consistent with the NYU/NYC brand.\n\n"
+            f"Return the full letter text."
+        )
 
-        res = self.writing_llm.invoke([SystemMessage(content="You are a persuasive career writer."), HumanMessage(content=prompt)])
+        res = self.writing_llm.invoke([SystemMessage(content="Persuasive career writer with a focus on factual accuracy."), HumanMessage(content=prompt)])
         return {"final_cover_letter": res.content}
+
+    def _verify_accuracy(self, state: JobProcessState):
+        letter = state["final_cover_letter"]
+        resume = state["resume_text"]
+        job = state["job"]
+        print(f"--- [Node: Verify Accuracy] cross-referencing claims ---")
+        
+        prompt = (
+            f"Analyze this cover letter for factual accuracy against the candidate's resume.\n"
+            f"RESUME GROUND TRUTH:\n{resume}\n\n"
+            f"COVER LETTER:\n{letter}\n\n"
+            f"TARGET JOB: {job.get('role')} at {job.get('company')}\n\n"
+            f"CHECKLIST:\n"
+            f"1. Does the letter claim she currently works at {job.get('company')}? (FAIL if yes)\n"
+            f"2. Are there any roles, dates, or metrics mentioned that are NOT in the resume? (FAIL if yes)\n"
+            f"3. Does it misrepresent her relationship to the target company?\n\n"
+            f"Return JSON: 'status' (PASS/FAIL), 'hallucinations' (list of identified lies/inaccuracies)."
+        )
+        
+        res = self.reasoning_llm.invoke([SystemMessage(content="Strict factual auditor."), HumanMessage(content=prompt)])
+        report = self._parse_json(res.content)
+        return {"accuracy_report": json.dumps(report)}
 
     def _critique_review(self, state: JobProcessState):
         letter = state["final_cover_letter"]
-        analysis = state["job_analysis"]
-        print(f"--- [Node: Critique Review] evaluating round {state['revision_count']} ---")
+        accuracy = state.get("accuracy_report", "{}")
+        print(f"--- [Node: Critique Review] round {state['revision_count']} ---")
         
-        prompt = f"Critically review this cover letter for quality.\nLetter:\n{letter}\n\nGoals:\n- Only 3 paragraphs?\n- Authentic to Ava Aschettino's brand (NYC, NYU, marketing focus)?\n\nIf it needs improvements, list specifically what to change. If it is already excellent, return 'EXCELLENT'."
-
-        res = self.reasoning_llm.invoke([SystemMessage(content="You are a senior hiring editor."), HumanMessage(content=prompt)])
+        prompt = (
+            f"Review this cover letter for NYU/NYC brand, length, and accuracy.\n"
+            f"ACCURACY REPORT: {accuracy}\n"
+            f"LETTER:\n{letter}\n\n"
+            f"If accuracy is 'FAIL' or there are hallucinations, you MUST list them as required improvements.\n"
+            f"If everything is perfect and accurate, return 'EXCELLENT'."
+        )
+        res = self.reasoning_llm.invoke([SystemMessage(content="Senior hiring editor focused on brand and integrity."), HumanMessage(content=prompt)])
         return {"revision_count": state["revision_count"] + 1, "critique": res.content}
 
     def _finalize_job(self, state: JobProcessState):
-        print(f"--- [Node: Finalize Job] uploading to drive ---")
+        print(f"--- [Node: Finalize Job] generating buffers ---")
         job = state["job"]
-        
-        # Format the mapped experience into a readable resume tailoring draft
-        resume_draft = "AVA ASCHETTINO - RESUME TAILORING DRAFT\n"
+        resume_draft = "AVA ASCHETTINO - TAILORED DRAFT\n"
         resume_draft += f"Job: {job.get('role')} at {job.get('company')}\n"
         resume_draft += "="*40 + "\n\n"
         for item in state.get("mapped_experience", []):
-            resume_draft += f"REQUIREMENT: {item.get('requirement')}\n"
-            resume_draft += f"EVIDENCE (STAR): {item.get('evidence')}\n\n"
+            resume_draft += f"REQ: {item.get('requirement')}\nSTAR: {item.get('evidence')}\n\n"
         
-        # Save both
+        cover_letter_buffer = self._write_to_template(self.template_path, state["final_cover_letter"], True, job)
+        resume_draft_buffer = self._write_to_template(self.resume_path, resume_draft, False, job)
+
         folder_link = self._upload_to_drive(
             job.get("company", "Unknown"), 
             job.get("role", "Unknown"), 
-            state["final_cover_letter"],
-            resume_draft
+            cover_letter_buffer,
+            resume_draft_buffer
         )
         
         processed_job = job.copy()
         processed_job["cover_letter_text"] = state["final_cover_letter"]
         processed_job["resume_draft_text"] = resume_draft
         processed_job["folder_link"] = folder_link
-        
         return {"results": [processed_job]}
 
-    def _upload_to_drive(self, company: str, role: str, cover_content: str, resume_content: str) -> str:
-        parent_folder_id = "1sonKNR4S-OGhKc2Szg54k2L0EtoOjK1Z" # 'Ava Job Drafts' folder
-        token_path = 'token.json'
+    def _write_to_template(self, template_path: str, content: str, is_cover_letter: bool, job: Dict) -> io.BytesIO:
+        doc = Document(template_path)
         
-        # Local backup path
+        if is_cover_letter:
+            start_index = 0
+            for i, p in enumerate(doc.paragraphs):
+                if any(x in p.text for x in ["[Date]", "[Hiring Manager Name]", "Dear"]):
+                    start_index = i
+                    break
+            
+            placeholders = {
+                "[Date]": time.strftime("%B %d, %Y"),
+                "[Hiring Manager Name]": "Hiring Manager",
+                "[Company Name]": job.get("company", "the team"),
+            }
+            
+            for p in doc.paragraphs[:start_index+1]:
+                for key, val in placeholders.items():
+                    if key in p.text:
+                        p.text = p.text.replace(key, val)
+            
+            body_start = start_index + 1
+            while len(doc.paragraphs) > body_start:
+                p = doc.paragraphs[-1]
+                p._element.getparent().remove(p._element)
+            
+            for line in content.split("\n"):
+                if line.strip():
+                    doc.add_paragraph(line)
+        else:
+            header_limit = 3
+            while len(doc.paragraphs) > header_limit:
+                p = doc.paragraphs[-1]
+                p._element.getparent().remove(p._element)
+            
+            for line in content.split("\n"):
+                if line.strip():
+                    doc.add_paragraph(line)
+        
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer
+
+    def _upload_to_drive(self, company: str, role: str, cover_buffer: io.BytesIO, resume_buffer: io.BytesIO) -> str:
+        parent_folder_id = "1sonKNR4S-OGhKc2Szg54k2L0EtoOjK1Z"
+        token_path = 'token.json'
         backup_dir = "drafts"
         os.makedirs(backup_dir, exist_ok=True)
-        local_cover_path = os.path.join(backup_dir, f"{company.replace(' ', '_')}_CoverLetter.txt")
-        local_resume_path = os.path.join(backup_dir, f"{company.replace(' ', '_')}_ResumeDraft.txt")
+        sanitized_company = company.replace(' ', '_').replace('/', '_')
+        local_cover_path = os.path.join(backup_dir, f"{sanitized_company}_CoverLetter.docx")
+        local_resume_path = os.path.join(backup_dir, f"{sanitized_company}_ResumeDraft.docx")
         
         try:
-            with open(local_cover_path, "w") as f:
-                f.write(cover_content)
-            with open(local_resume_path, "w") as f:
-                f.write(resume_content)
+            with open(local_cover_path, "wb") as f:
+                f.write(cover_buffer.getvalue())
+            with open(local_resume_path, "wb") as f:
+                f.write(resume_buffer.getvalue())
         except Exception as e:
-            print(f"Local backup failed: {e}")
+            logger.error(f"Local backup failed: {e}")
         
-        if not os.path.exists(token_path):
-            return f"Saved locally only (token.json missing): {local_cover_path}"
-            
-        try:
-            # Use token.json for User Authentication (utilizes 5TB quota)
-            creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive.file'])
-            drive_service = build('drive', 'v3', credentials=creds)
-            
-            # 1. Create Folder inside the personal parent
-            folder_metadata = {
-                'name': f"{company} - {role}",
-                'mimeType': 'application/vnd.google-apps.folder',
-                'parents': [parent_folder_id]
-            }
-            folder = drive_service.files().create(body=folder_metadata, fields='id, webViewLink').execute()
-            folder_id = folder.get('id')
-            
-            # 2. Create Cover Letter Doc inside folder
-            cv_metadata = {
-                'name': f'Cover Letter - {company}',
-                'mimeType': 'application/vnd.google-apps.document',
-                'parents': [folder_id]
-            }
-            cv_media = MediaInMemoryUpload(cover_content.encode('utf-8'), mimetype='text/plain', resumable=True)
-            drive_service.files().create(body=cv_metadata, media_body=cv_media, fields='id').execute()
+        else:
+            if not os.path.exists(token_path):
+                return f"Saved locally only (token.json missing): {local_cover_path}"
+                
+            try:
+                creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive.file'])
+                drive_service = build('drive', 'v3', credentials=creds)
+                
+                folder_metadata = {
+                    'name': f"{company} - {role}",
+                    'mimeType': 'application/vnd.google-apps.folder',
+                    'parents': [parent_folder_id]
+                }
+                folder = drive_service.files().create(body=folder_metadata, fields='id, webViewLink').execute()
+                folder_id = folder.get('id')
+                
+                cv_metadata = {
+                    'name': f'Cover Letter - {company}',
+                    'mimeType': 'application/vnd.google-apps.document',
+                    'parents': [folder_id]
+                }
+                cv_media = MediaInMemoryUpload(
+                    cover_buffer.getvalue(), 
+                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
+                    resumable=True
+                )
+                drive_service.files().create(body=cv_metadata, media_body=cv_media, fields='id').execute()
 
-            # 3. Create Resume Draft Doc inside folder
-            rs_metadata = {
-                'name': f'Resume Tailoring Draft - {company}',
-                'mimeType': 'application/vnd.google-apps.document',
-                'parents': [folder_id]
-            }
-            rs_media = MediaInMemoryUpload(resume_content.encode('utf-8'), mimetype='text/plain', resumable=True)
-            drive_service.files().create(body=rs_metadata, media_body=rs_media, fields='id').execute()
-            
-            return folder.get('webViewLink', "No link generated")
-            
-            return folder.get('webViewLink', "No link generated")
-        except Exception as e:
-            return f"Saved locally! Drive error: {str(e)}"
+                rs_metadata = {
+                    'name': f'Resume Tailoring Draft - {company}',
+                    'mimeType': 'application/vnd.google-apps.document',
+                    'parents': [folder_id]
+                }
+                rs_media = MediaInMemoryUpload(
+                    resume_buffer.getvalue(), 
+                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
+                    resumable=True
+                )
+                drive_service.files().create(body=rs_metadata, media_body=rs_media, fields='id').execute()
+                
+                return folder.get('webViewLink', "No link generated")
+            except Exception as e:
+                return f"Saved locally! Drive error: {str(e)}"
 
     def _send_webhooks(self, state: OverallState):
         webhook_url = os.getenv("WEBHOOK_URL")
@@ -276,22 +385,13 @@ class AvaGenerator:
         print(f"--- [Node: Send Webhooks] sending {len(state['results'])} responses ---")
         for job in state["results"]:
             try:
-                # Ensure job is a dict (handles pandas.Series if leaked into results)
-                if hasattr(job, 'to_dict'):
-                    job_data = job.to_dict()
-                elif isinstance(job, dict):
-                    job_data = job
-                else:
-                    job_data = dict(job)
-
                 payload = {
-                    "company": job_data.get("company", "Unknown"),
-                    "role": job_data.get("role") or job_data.get("title") or "Position",
-                    "salary": job_data.get("salary", "N/A"),
-                    "link": job_data.get("link", ""),
-                    "folder_link": job_data.get("folder_link", "")
+                    "company": job.get("company", "Unknown"),
+                    "role": job.get("role") or job.get("title") or "Position",
+                    "salary": job.get("salary", "N/A"),
+                    "link": job.get("link", ""),
+                    "folder_link": job.get("folder_link", "")
                 }
-                
                 requests.post(webhook_url, json=payload, timeout=15)
                 logger.info(f"Dispatched: {payload['role']} @ {payload['company']}")
             except Exception as e:
