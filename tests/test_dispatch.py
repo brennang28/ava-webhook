@@ -1,4 +1,4 @@
-from watcher import AvaWatcher
+from ava_webhook.watcher import AvaWatcher
 import logging
 
 # Setup logging to see output

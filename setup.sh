@@ -13,7 +13,7 @@ fi
 
 # 2. Install dependencies
 echo "Installing dependencies..."
-uv pip install python-jobspy requests python-dotenv beautifulsoup4 pandas langgraph langchain-ollama pydantic
+uv sync
 
 # 3. Create .env if not exists
 if [ ! -f ".env" ]; then
@@ -32,4 +32,3 @@ echo "Next steps:"
 echo "1. Deploy your Google Apps Script and get the Web App URL."
 echo "2. Add the URL to the .env file."
 echo "3. Run './run.sh' to start catching jobs!"
-pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib python-docx

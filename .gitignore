@@ -1,4 +1,5 @@
 # Virtual Environment
+.venv/
 venv/
 ENV/
 .env
@@ -7,10 +8,12 @@ ENV/
 __pycache__/
 *.py[cod]
 *$py.class
+src/ava_webhook.egg-info/
 
 # Logs
 *.log
-scratch/logs/
+research/logs/
+test_run.log
 
 # Sensitive data
 token.json
@@ -18,8 +21,11 @@ credentials.json
 .env
 
 # Scratch/Temporary
-scratch/
-drafts/
 .pytest_cache/
 .coverage
 htmlcov/
+assets/*.docx
+!assets/Aschettino,\ Ava\ -\ Cover Letter\ Template.docx
+
+# Keep scripts and research (except data if sensitive)
+# research/data/ is included by default unless specifically ignored

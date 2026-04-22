@@ -49,7 +49,7 @@ class ScoutState(TypedDict):
 # --- Agent Implementation ---
 
 class AvaScout:
-    def __init__(self, config_path="/home/brenn/ava-webhook/config.json", db_path="jobs.db", profile_path="research/profile.json", applied_path="research/applied_companies.json", patterns_path="research/success_patterns.json", history_path="research/applied_history.json"):
+    def __init__(self, config_path="config.json", db_path="jobs.db", profile_path="research/profile.json", applied_path="research/data/applied_companies.json", patterns_path="research/success_patterns.json", history_path="research/data/applied_history.json"):
         self.profile_path = profile_path
         self.applied_path = applied_path
         self.patterns_path = patterns_path

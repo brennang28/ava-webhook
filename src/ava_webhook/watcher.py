@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from jobspy import scrape_jobs
-from scout import AvaScout
-from generator import AvaGenerator
+from .scout import AvaScout
+from .generator import AvaGenerator
 from playwright.sync_api import sync_playwright
 
 # Setup logging

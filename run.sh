@@ -7,5 +7,5 @@ cd "$(dirname "$0")"
 
 # Run the watcher
 echo "--- $(date): Running Ava Job Watcher ---"
-./.venv/bin/python3 watcher.py
+PYTHONPATH=src ./.venv/bin/python3 -m ava_webhook.watcher
 echo "--- Done ---"

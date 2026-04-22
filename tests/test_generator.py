@@ -1,4 +1,4 @@
-from generator import AvaGenerator
+from ava_webhook.generator import AvaGenerator
 import pytest
 import requests
 

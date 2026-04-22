@@ -33,7 +33,7 @@ class JobProcessState(TypedDict):
     folder_link: str
 
 class AvaGenerator:
-    def __init__(self, config_path="/home/brenn/ava-webhook/config.json"):
+    def __init__(self, config_path="config.json"):
         # 0. Load Config
         self.config = {}
         if os.path.exists(config_path):
@@ -63,8 +63,8 @@ class AvaGenerator:
         )
 
         # 2. Context
-        self.resume_text = self._load_context("/home/brenn/ava-webhook/scratch/resume.txt")
-        self.template_text = self._load_context("/home/brenn/ava-webhook/scratch/template.txt")
+        self.resume_text = self._load_context("assets/resume.txt")
+        self.template_text = self._load_context("assets/template.txt")
         
         # 3. Main Workflow
         self.workflow = self._build_graph()
