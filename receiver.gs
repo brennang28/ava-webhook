@@ -16,32 +16,55 @@ function doPost(e) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var payload = JSON.parse(e.postData.contents);
     var jobLink = payload.link || "";
+    var company = payload.company || "";
+    var role = payload.role || payload.title || "";
     
-    // 1. Search for existing job link in Column H (Index 8)
     var data = sheet.getDataRange().getValues();
     var existingRowIndex = -1;
     
+    // 1. Search for existing job link in Column H (Index 7)
     if (jobLink) {
       for (var i = 1; i < data.length; i++) { // Skip header
-        if (data[i][7] === jobLink) { // Column H is index 7
-          existingRowIndex = i + 1; // 1-based indexing for sheets
+        if (data[i][7] === jobLink) { 
+          existingRowIndex = i + 1;
+          break;
+        }
+      }
+    }
+
+    // 2. Fallback: Search by Company (Col A) AND Role (Col B) if no link match
+    if (existingRowIndex === -1 && company && role) {
+      var normCompany = company.toLowerCase().replace(/\s+/g, '');
+      var normRole = role.toLowerCase().replace(/\s+/g, '');
+      
+      for (var i = 1; i < data.length; i++) {
+        var rowCompany = (data[i][0] || "").toString().toLowerCase().replace(/\s+/g, '');
+        var rowRole = (data[i][1] || "").toString().toLowerCase().replace(/\s+/g, '');
+        
+        if (rowCompany === normCompany && rowRole === normRole) {
+          existingRowIndex = i + 1;
           break;
         }
       }
     }
 
     if (existingRowIndex !== -1) {
-      // 2. Update existing row's Column I with folder_link
+      // 3. Update existing row's Column I with folder_link if provided
       if (payload.folder_link) {
-        sheet.getRange(existingRowIndex, 9).setValue(payload.folder_link); // Column I is 9
+        sheet.getRange(existingRowIndex, 9).setValue(payload.folder_link); 
       }
+      // Also update the link if it was missing or different
+      if (jobLink && !data[existingRowIndex-1][7]) {
+        sheet.getRange(existingRowIndex, 8).setValue(jobLink);
+      }
+      
       return ContentService.createTextOutput(JSON.stringify({ "status": "updated", "row": existingRowIndex }))
         .setMimeType(ContentService.MimeType.JSON);
     } else {
-      // 3. Append new row if not found
+      // 4. Append new row if not found
       var row = [
-        payload.company || "",        // Column A: Company
-        payload.role || payload.title, // Column B: Role
+        company,                      // Column A: Company
+        role,                         // Column B: Role
         payload.salary || "",         // Column C: Salary
         "No",                         // Column D: Applied?
         "",                           // Column E: Date Applied

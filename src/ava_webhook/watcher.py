@@ -10,6 +10,8 @@ from jobspy import scrape_jobs
 from .scout import AvaScout
 from .generator import AvaGenerator
 from playwright.sync_api import sync_playwright
+from urllib.parse import urlparse, urlunparse
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,7 +46,8 @@ class AvaWatcher:
 
     def _load_applied_history(self):
         """Loads and normalizes applied_history.json for early filtering."""
-        history_path = "research/applied_history.json"
+        history_path = "research/data/applied_history.json"
+
         history_set = set()
         if os.path.exists(history_path):
             try:
@@ -72,20 +75,46 @@ class AvaWatcher:
             conn.execute('''CREATE TABLE IF NOT EXISTS jobs 
                            (job_id TEXT PRIMARY KEY, title TEXT, company TEXT, date_found TIMESTAMP)''')
 
-    def is_new(self, job_id):
-        if job_id in self.session_seen:
+    def _normalize_url(self, url):
+        """Strips tracking parameters from job URLs."""
+        if not url or not isinstance(url, str):
+            return url
+        try:
+            parsed = urlparse(url)
+            # Only keep the scheme, netloc, and path
+            return urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+        except Exception as e:
+            logger.warning(f"Failed to normalize URL {url}: {e}")
+            return url
+
+    def is_new(self, job_id, title=None, company=None):
+        """Checks if a job is new by ID or by Company/Role combination."""
+        norm_id = self._normalize_url(job_id)
+        if norm_id in self.session_seen:
             return False
+            
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT 1 FROM jobs WHERE job_id = ?", (job_id,))
-            is_in_db = cursor.fetchone() is not None
-            if is_in_db:
+            # 1. Check by normalized ID
+            cursor = conn.execute("SELECT 1 FROM jobs WHERE job_id = ?", (norm_id,))
+            if cursor.fetchone():
                 return False
+                
+            # 2. Check by Company/Role collision if provided
+            if title and company:
+                cursor = conn.execute("SELECT 1 FROM jobs WHERE title = ? AND company = ?", (title, company))
+                if cursor.fetchone():
+                    logger.debug(f"Duplicate by Company/Role: {title} @ {company}")
+                    return False
+                    
         return True
 
+
     def save_job(self, job_id, title, company):
+        norm_id = self._normalize_url(job_id)
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT INTO jobs (job_id, title, company, date_found) VALUES (?, ?, ?, ?)",
-                         (job_id, title, company, datetime.now()))
+            conn.execute("INSERT OR REPLACE INTO jobs (job_id, title, company, date_found) VALUES (?, ?, ?, ?)",
+                         (norm_id, title, company, datetime.now()))
+
 
     def dispatch(self, job):
         if not WEBHOOK_URL or "script.google.com" not in WEBHOOK_URL:
@@ -135,21 +164,24 @@ class AvaWatcher:
                 )
                 
                 for _, row in jobs.iterrows():
-                    job_id = row['job_url'] # Use URL as unique ID
-                    if self.is_new(job_id):
-                        self.session_seen.add(job_id)
-                        # Convert NaN to empty strings or defaults
-                        company = row['company'] if str(row['company']) != 'nan' else 'Unknown'
-                        title_val = row['title'] if str(row['title']) != 'nan' else 'Position'
-                        salary = row['salary_source'] if str(row['salary_source']) != 'nan' else ''
+                    raw_url = row['job_url']
+                    company = row['company'] if str(row['company']) != 'nan' else 'Unknown'
+                    title_val = row['title'] if str(row['title']) != 'nan' else 'Position'
+                    salary = row['salary_source'] if str(row['salary_source']) != 'nan' else ''
+                    
+                    if self.is_new(raw_url, title_val, company):
+                        norm_id = self._normalize_url(raw_url)
+                        self.session_seen.add(norm_id)
 
-                        if self._should_process_job(title_val, company) and self._verify_link(job_id, company):
+
+                        if self._should_process_job(title_val, company) and self._verify_link(raw_url, company):
                             all_found.append({
                                 "company": company,
                                 "role": title_val,
                                 "salary": salary,
-                                "link": job_id
+                                "link": norm_id
                             })
+
                         elif not self._should_process_job(title_val, company):
                             logger.debug(f"Filtered role: {title_val}")
                         else:
@@ -190,13 +222,16 @@ class AvaWatcher:
                 location_text = company_elem.get_text(separator=" ").strip()
                 is_target_loc = self._is_target_location(location_text)
 
-                if (is_target_cat or matches_kw) and is_target_loc and self.is_new(link):
+                if (is_target_cat or matches_kw) and is_target_loc and self.is_new(link, title, company):
                     if not self._should_process_job(title, company):
                         continue
                     if not self._verify_link(link, company):
                         logger.warning(f"Skipping unverified Playbill link: {link}")
                         continue
-                    all_found.append({"company": company, "role": title, "link": link})
+                    norm_link = self._normalize_url(link)
+                    self.session_seen.add(norm_link)
+                    all_found.append({"company": company, "role": title, "link": norm_link})
+
         except Exception as e:
             logger.error(f"Error scraping Playbill: {e}")
         return all_found
@@ -234,14 +269,16 @@ class AvaWatcher:
                 if (self._should_process_job(title, company['name']) 
                     and self._is_target_location(location) 
                     and self._is_recent(posted)
-                    and self.is_new(str(job['id']))
+                    and self.is_new(str(job['id']), title, company['name'])
                     and self._verify_link(job['absolute_url'], company['name'])):
+                    norm_url = self._normalize_url(job['absolute_url'])
                     found.append({
                         "id": str(job['id']),
                         "company": company['name'],
                         "role": title,
-                        "link": job['absolute_url']
+                        "link": norm_url
                     })
+
         return found
 
     def _check_lever(self, company):
@@ -267,14 +304,16 @@ class AvaWatcher:
             if (self._should_process_job(title, company['name']) 
                 and self._is_target_location(location) 
                 and self._is_recent(posted)
-                and self.is_new(job['id'])
+                and self.is_new(job['id'], title, company['name'])
                 and self._verify_link(job['hostedUrl'], company['name'])):
+                norm_url = self._normalize_url(job['hostedUrl'])
                 found.append({
                     "id": job['id'],
                     "company": company['name'],
                     "role": title,
-                    "link": job['hostedUrl']
+                    "link": norm_url
                 })
+
         return found
 
     def _should_process_job(self, title, company=""):
