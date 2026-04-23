@@ -19,3 +19,4 @@
 - **Clock Drift**: WSL2 time drifts when host sleeps. `systemd-timesyncd` fixes on wake.
 - **Persistent Timers**: Use `systemd` user timers with `Persistent=true` instead of `cron` to catch up on missed runs while the machine was asleep.
 - **Environment Isolation**: User-level services need `EnvironmentFile` pointing to the absolute path of `.env`.
+- **Module Execution**: When using a package structure (`src/pkg/`), `systemd` services must use `ExecStart=... python3 -m pkg.module` and explicitly set `Environment=PYTHONPATH=src` to resolve relative imports and locate the script.

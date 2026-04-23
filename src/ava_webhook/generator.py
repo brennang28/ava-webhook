@@ -195,21 +195,36 @@ class AvaGenerator:
         mapping = state["mapped_experience"]
         template = state["template_text"]
         print(f"--- [Node: Draft Sections] Revision: {state['revision_count']} ---")
-        prompt = (
-            f"Draft a 3-paragraph cover letter strictly following this template context:\n{template}\n\n"
+        
+        # Phase 1: Selection (Resolve Brackets)
+        selection_prompt = (
+            f"Analyze this cover letter template and the candidate's mapping evidence.\n"
+            f"TEMPLATE:\n{template}\n\n"
+            f"EVIDENCE:\n{mapping}\n\n"
+            f"INSTRUCTIONS:\n"
+            f"1. Identify all sections with bracketed options like [A / B / C].\n"
+            f"2. For each, select the SINGLE best option that is supported by the evidence.\n"
+            f"3. Return a clean version of the template with all brackets resolved and all placeholders like [Company Name] filled with '{job.get('company')}'."
+        )
+        selection_res = self.reasoning_llm.invoke([SystemMessage(content="You are a logic engine that resolves template choices."), HumanMessage(content=selection_prompt)])
+        resolved_template = selection_res.content
+
+        # Phase 2: Writing (Prose Polishing)
+        writing_prompt = (
+            f"Draft a 3-paragraph cover letter using this resolved template as your structure:\n{resolved_template}\n\n"
             f"CONTEXT:\n"
             f"- Candidate: Ava Aschettino (EXTERNAL applicant)\n"
-            f"- Current Role: Marketing & Partnerships Assistant at The Paley Center for Media\n"
-            f"- Target Role: {job.get('role')} at {job.get('company')}\n\n"
+            f"- Target Role: {job.get('role')} at {job.get('company')}\n"
+            f"- Company Vibe: {analysis.get('vibe')}\n\n"
             f"INSTRUCTIONS:\n"
-            f"1. Ava does NOT currently work at {job.get('company')}. Do not claim she does.\n"
+            f"1. Adapt the tone to match the Company Vibe (e.g. if luxury, use sophisticated language).\n"
             f"2. Use ONLY the following evidence for factual claims: {mapping}\n"
-            f"3. Maintain a professional, persuasive tone consistent with the NYU/NYC brand.\n"
-            f"4. MANDATORY: If you are not 100% confident in a specific claim or if it is a calculated inference, wrap that exact phrase in <verify>...</verify> tags.\n\n"
+            f"3. MANDATORY: DO NOT include any brackets `[...]` or choices in the final output.\n"
+            f"4. MANDATORY: If you are not 100% confident in a specific claim, wrap it in <verify>...</verify> tags.\n\n"
             f"Return the full letter text."
         )
 
-        res = self.writing_llm.invoke([SystemMessage(content="Persuasive career writer with a focus on factual accuracy."), HumanMessage(content=prompt)])
+        res = self.writing_llm.invoke([SystemMessage(content="Persuasive career writer with a focus on brand alignment."), HumanMessage(content=writing_prompt)])
         return {"final_cover_letter": res.content}
 
     def _verify_accuracy(self, state: JobProcessState):
@@ -274,36 +289,85 @@ class AvaGenerator:
         processed_job["folder_link"] = folder_link
         return {"results": [processed_job]}
 
+    def _lookup_company_address(self, company_name: str) -> str:
+        api_key = os.getenv("TAVILY_API_KEY")
+        if not api_key:
+            return "New York, NY"
+        
+        try:
+            logger.info(f"Looking up address for {company_name} via Tavily...")
+            url = "https://api.tavily.com/search"
+            payload = {
+                "api_key": api_key,
+                "query": f"{company_name} headquarters office address New York",
+                "search_depth": "basic",
+                "max_results": 1
+            }
+            response = requests.post(url, json=payload, timeout=10)
+            data = response.json()
+            
+            # Use LLM to extract a clean address from the search results
+            context = "\n".join([r.get("content", "") for r in data.get("results", [])])
+            if not context:
+                return "New York, NY"
+                
+            prompt = f"Extract only the physical office address for {company_name} from this text. If multiple, pick the NYC one if present, otherwise HQ. Return ONLY the address string: {context}"
+            res = self.reasoning_llm.invoke([SystemMessage(content="Address extractor."), HumanMessage(content=prompt)])
+            return res.content.strip()
+        except Exception as e:
+            logger.error(f"Address lookup failed: {e}")
+            return "New York, NY"
+
     def _write_to_template(self, template_path: str, content: str, is_cover_letter: bool, job: Dict) -> io.BytesIO:
         doc = Document(template_path)
         
         if is_cover_letter:
-            start_index = 0
-            for i, p in enumerate(doc.paragraphs):
-                if any(x in p.text for x in ["[Date]", "[Hiring Manager Name]", "Dear"]):
-                    start_index = i
-                    break
+            # 1. Resolve Placeholders in Header
+            company_name = job.get("company", "the team")
+            job_location = job.get("location", "")
+            
+            # Use Tavily only if the job location is missing or a generic city name
+            is_generic = job_location.lower() in ["remote", "new york, ny", "nyc", "united states", ""]
+            if is_generic:
+                address = self._lookup_company_address(company_name)
+            else:
+                address = job_location
             
             placeholders = {
                 "[Date]": time.strftime("%B %d, %Y"),
                 "[Hiring Manager Name]": "Hiring Manager",
-                "[Company Name]": job.get("company", "the team"),
+                "[Company Name]": company_name,
+                "[Company Address]": address
             }
             
-            for p in doc.paragraphs[:start_index+1]:
+            # Identify the salutation line to use as a boundary
+            salutation_idx = -1
+            for i, p in enumerate(doc.paragraphs):
+                # Replace placeholders in any paragraph before or including the salutation
                 for key, val in placeholders.items():
                     if key in p.text:
                         p.text = p.text.replace(key, val)
+                
+                if "Dear" in p.text:
+                    salutation_idx = i
+                    # Prevent duplicate salutations by stripping it from the content
+                    # if the template already has one we like
+                    content = re.sub(r'^Dear\s+.*?[,:]\s*', '', content.strip(), flags=re.MULTILINE | re.IGNORECASE)
+                    break
             
-            body_start = start_index + 1
-            while len(doc.paragraphs) > body_start:
-                p = doc.paragraphs[-1]
-                p._element.getparent().remove(p._element)
+            # 2. Replace Body
+            # Remove everything after the salutation paragraph
+            if salutation_idx != -1:
+                body_start = salutation_idx + 1
+                while len(doc.paragraphs) > body_start:
+                    p = doc.paragraphs[body_start]
+                    p._element.getparent().remove(p._element)
             
+            # Append new body content
             for line in content.split("\n"):
                 if line.strip():
                     p = doc.add_paragraph()
-                    # Parse <verify> tags
+                    # Parse <verify> tags for red-highlighting
                     parts = re.split(r'(<verify>.*?</verify>)', line)
                     for part in parts:
                         if part.startswith("<verify>") and part.endswith("</verify>"):

@@ -185,7 +185,7 @@ class AvaWatcher:
                         elif not self._should_process_job(title_val, company):
                             logger.debug(f"Filtered role: {title_val}")
                         else:
-                            logger.warning(f"Unverified link skipped: {job_id}")
+                            logger.warning(f"Unverified link skipped: {norm_id}")
             except Exception as e:
                 logger.error(f"Error scraping {title}: {e}")
         return all_found
@@ -213,7 +213,9 @@ class AvaWatcher:
                 title = title_elem.get_text(separator=" ").strip()
                 company = company_elem.get_text(separator="|").split('|')[0].strip()
                 category = category_elem.get_text().strip() if category_elem else ""
-                link = "https://playbill.com" + listing['href']
+                link = listing['href']
+                if not link.startswith('http'):
+                    link = "https://playbill.com" + link
                 
                 config_pb = self.config['sources']['playbill']
                 is_target_cat = any(cat.lower() in category.lower() for cat in config_pb['categories'])
@@ -454,8 +456,8 @@ class AvaWatcher:
                 
         except Exception as e:
             logger.error(f"Fulfillment pipeline failed: {e}")
-            logger.info("Falling back to basic dispatch for first 25 jobs.")
-            for job in dedup_pool[:25]:
+            logger.info("Falling back to basic dispatch for first 1 jobs.")
+            for job in dedup_pool[:1]:
                 self.dispatch(job)
                 db_id = job.get('id') or job.get('link')
                 role = job.get('role') or job.get('title') or 'Position'

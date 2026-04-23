@@ -1,5 +1,5 @@
 /**
- * Webhook Receiver for Ava Job Tracker
+ * Ava Job Tracker Webhook Receiver (Updated for Hyperlinked Companies)
  * 
  * Instructions:
  * 1. In your Google Sheet, go to Extensions > Apps Script.
@@ -7,38 +7,55 @@
  * 3. Click 'Deploy' > 'New Deployment'.
  * 4. Select Type: 'Web App'.
  * 5. Execute As: 'Me'.
- * 6. Who has access: 'Anyone'. (Note: This is required for the webhook to reach the script).
- * 7. Copy the 'Web App URL' and paste it into your .env file in the ava-webhook directory.
+ * 6. Who has access: 'Anyone'.
+ * 7. Click 'Deploy'. 
+ * 8. IMPORTANT: Copy the 'Web App URL' and ensure it matches WEBHOOK_URL in .env.
+ * 
+ * Column Mapping (8 Columns):
+ * A: Company (Hyperlinked)
+ * B: Role
+ * C: Salary
+ * D: Applied?
+ * E: Date Applied
+ * F: Who did you reach out to?
+ * G: Status
+ * H: AI Generated Application Materials (Folder Link)
  */
 
 function doPost(e) {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var payload = JSON.parse(e.postData.contents);
-    var jobLink = payload.link || "";
-    var company = payload.company || "";
-    var role = payload.role || payload.title || "";
     
+    // LOGGING: Check your Apps Script "Executions" tab to see this output
+    console.log("Received Webhook Payload:", JSON.stringify(payload, null, 2));
+    
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var jobLink = payload.link || "";
+    var company = payload.company || "Unknown";
+    var role = payload.role || payload.title || "Position";
+    
+    // Escape double quotes for Google Sheets formula
+    var escapedCompany = company.replace(/"/g, '""');
+    
+    // 1. Search for existing entry to avoid duplicates (Company + Role)
     var data = sheet.getDataRange().getValues();
     var existingRowIndex = -1;
     
-    // 1. Search for existing job link in Column H (Index 7)
-    if (jobLink) {
-      for (var i = 1; i < data.length; i++) { // Skip header
-        if (data[i][7] === jobLink) { 
-          existingRowIndex = i + 1;
-          break;
-        }
-      }
-    }
-
-    // 2. Fallback: Search by Company (Col A) AND Role (Col B) if no link match
-    if (existingRowIndex === -1 && company && role) {
+    if (company && role) {
       var normCompany = company.toLowerCase().replace(/\s+/g, '');
       var normRole = role.toLowerCase().replace(/\s+/g, '');
       
       for (var i = 1; i < data.length; i++) {
-        var rowCompany = (data[i][0] || "").toString().toLowerCase().replace(/\s+/g, '');
+        var rowValA = (data[i][0] || "").toString();
+        var rowCompanyText = rowValA;
+        
+        // Handle existing hyperlinked cells (extract plain text for comparison)
+        if (rowValA.startsWith("=HYPERLINK")) {
+          var match = rowValA.match(/",\s*"([^"]+)"\)/);
+          if (match) rowCompanyText = match[1];
+        }
+        
+        var rowCompany = rowCompanyText.toLowerCase().replace(/\s+/g, '');
         var rowRole = (data[i][1] || "").toString().toLowerCase().replace(/\s+/g, '');
         
         if (rowCompany === normCompany && rowRole === normRole) {
@@ -49,35 +66,31 @@ function doPost(e) {
     }
 
     if (existingRowIndex !== -1) {
-      // 3. Update existing row's Column I with folder_link if provided
+      // 2. Update existing row's Column H (Column 8) with folder_link if provided
       if (payload.folder_link) {
-        sheet.getRange(existingRowIndex, 9).setValue(payload.folder_link); 
+        sheet.getRange(existingRowIndex, 8).setValue(payload.folder_link); 
       }
-      // Also update the link if it was missing or different
-      if (jobLink && !data[existingRowIndex-1][7]) {
-        sheet.getRange(existingRowIndex, 8).setValue(jobLink);
-      }
-      
       return ContentService.createTextOutput(JSON.stringify({ "status": "updated", "row": existingRowIndex }))
         .setMimeType(ContentService.MimeType.JSON);
     } else {
-      // 4. Append new row if not found
+      // 3. Append new row with Hyperlinked Company in Column A
       var row = [
-        company,                      // Column A: Company
-        role,                         // Column B: Role
-        payload.salary || "",         // Column C: Salary
-        "No",                         // Column D: Applied?
-        "",                           // Column E: Date Applied
-        "",                           // Column F: Who did you reach out to?
-        "To Apply",                   // Column G: Status
-        jobLink,                      // Column H: Application Link
-        payload.folder_link || ""     // Column I: Drive Folder Link
+        "=HYPERLINK(\"" + jobLink + "\", \"" + escapedCompany + "\")", // A: Company
+        role,                         // B: Role
+        payload.salary || "",         // C: Salary
+        "No",                         // D: Applied?
+        "",                           // E: Date Applied
+        "",                           // F: Who did you reach out to?
+        "To Apply",                   // G: Status
+        payload.folder_link || ""     // H: Drive Folder Link
       ];
+      
       sheet.appendRow(row);
       return ContentService.createTextOutput(JSON.stringify({ "status": "appended" }))
         .setMimeType(ContentService.MimeType.JSON);
     }
   } catch (err) {
+    console.error("Webhook Error:", err.toString());
     return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }

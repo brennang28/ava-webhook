@@ -10,6 +10,7 @@
     - [x] Disable Windows Sleep in Power Settings
 - [x] **Phase 3: Linux Side Hardening**
     - [x] Replace `cron` with `systemd` user timers (Persistent=true)
+    - [x] Fix systemd unit paths and PYTHONPATH for module execution
     - [x] Robustify `watcher.py` and `generator.py` for varying schemas
     - [x] Test persistence by disconnecting SSH
 - [ ] **Phase 4: Verification**
