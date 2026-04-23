@@ -8,6 +8,7 @@ import io
 import logging
 from typing import Annotated, TypedDict, List, Dict, Any
 from docx import Document
+from docx.shared import RGBColor
 from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -203,7 +204,8 @@ class AvaGenerator:
             f"INSTRUCTIONS:\n"
             f"1. Ava does NOT currently work at {job.get('company')}. Do not claim she does.\n"
             f"2. Use ONLY the following evidence for factual claims: {mapping}\n"
-            f"3. Maintain a professional, persuasive tone consistent with the NYU/NYC brand.\n\n"
+            f"3. Maintain a professional, persuasive tone consistent with the NYU/NYC brand.\n"
+            f"4. MANDATORY: If you are not 100% confident in a specific claim or if it is a calculated inference, wrap that exact phrase in <verify>...</verify> tags.\n\n"
             f"Return the full letter text."
         )
 
@@ -300,7 +302,16 @@ class AvaGenerator:
             
             for line in content.split("\n"):
                 if line.strip():
-                    doc.add_paragraph(line)
+                    p = doc.add_paragraph()
+                    # Parse <verify> tags
+                    parts = re.split(r'(<verify>.*?</verify>)', line)
+                    for part in parts:
+                        if part.startswith("<verify>") and part.endswith("</verify>"):
+                            text = part.replace("<verify>", "").replace("</verify>", "")
+                            run = p.add_run(text)
+                            run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+                        else:
+                            p.add_run(part)
         else:
             header_limit = 3
             while len(doc.paragraphs) > header_limit:
@@ -309,7 +320,16 @@ class AvaGenerator:
             
             for line in content.split("\n"):
                 if line.strip():
-                    doc.add_paragraph(line)
+                    p = doc.add_paragraph()
+                    # Parse <verify> tags
+                    parts = re.split(r'(<verify>.*?</verify>)', line)
+                    for part in parts:
+                        if part.startswith("<verify>") and part.endswith("</verify>"):
+                            text = part.replace("<verify>", "").replace("</verify>", "")
+                            run = p.add_run(text)
+                            run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+                        else:
+                            p.add_run(part)
         
         buffer = io.BytesIO()
         doc.save(buffer)
