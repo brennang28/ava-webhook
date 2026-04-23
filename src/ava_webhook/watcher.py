@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import json
 import logging
@@ -343,6 +344,52 @@ class AvaWatcher:
         titles = self.config['filters']['titles']
         return any(t.lower() in title.lower() for t in titles)
 
+    @staticmethod
+    def _company_name_variants(name: str):
+        """Generate normalized variants of a company name for fuzzy page-content matching.
+
+        Handles common rendering differences between job APIs (jobspy) and live pages:
+        - Corporate suffixes (Inc., LLC, Ltd., Corp., Co.)
+        - HTML entities (&amp; vs &)
+        - Trademark/copyright symbols (®, ™, ©)
+        - Punctuation differences (e.l.f. vs elf)
+        """
+        if not name:
+            return [""]
+
+        variants = {name.lower()}
+
+        # Strip trailing corporate suffixes
+        stripped = re.sub(
+            r"[,\s]+(inc\.?|llc\.?|ltd\.?|corp\.?|corporation|limited|company|co\.?)[,\s]*$",
+            "",
+            name,
+            flags=re.IGNORECASE,
+        )
+        variants.add(stripped.lower())
+
+        # Replace & with &amp; for HTML entity matching in raw page content
+        variants.add(name.lower().replace("&", "&amp;"))
+        variants.add(stripped.lower().replace("&", "&amp;"))
+
+        # Remove trademark/copyright symbols
+        no_symbols = name.replace("®", "").replace("™", "").replace("©", "")
+        variants.add(
+            re.sub(
+                r"[,\s]+(inc\.?|llc\.?|ltd\.?|corp\.?|corporation|limited|company|co\.?)[,\s]*$",
+                "",
+                no_symbols,
+                flags=re.IGNORECASE,
+            ).lower()
+        )
+        variants.add(no_symbols.lower())
+
+        # Remove all non-alphanumeric except spaces and ampersands, then collapse whitespace
+        no_punct = re.sub(r"[^\w\s&]", "", name)
+        variants.add(" ".join(no_punct.lower().split()))
+
+        return list(variants)
+
     def _verify_link(self, link, expected_company=None):
         """Verify the link is accurate by performing a browser-based visit
         to bypass bot detection and check page content."""
@@ -350,25 +397,33 @@ class AvaWatcher:
             browser = self._get_browser()
             context = browser.new_context(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
             page = context.new_page()
-            
+
             # Navigate to the link with a timeout
             response = page.goto(link, wait_until="domcontentloaded", timeout=30000)
-            
+
             if not response or response.status != 200:
                 logger.warning(f"Link verification failed (status {response.status if response else 'N/A'}): {link}")
                 context.close()
                 return False
-            
+
             if expected_company:
                 # Give some time for JS to render
                 page.wait_for_timeout(2000)
                 content = page.content().lower()
-                content_match = expected_company.lower() in content
+
+                variants = self._company_name_variants(expected_company)
+                content_match = any(variant in content for variant in variants)
+
                 if not content_match:
-                    logger.warning(f"Company mismatch for link: {link} (Expected: {expected_company})")
+                    logger.debug(
+                        f"Company name variants tried for {link}: {variants}"
+                    )
+                    logger.warning(
+                        f"Company mismatch for link: {link} (Expected: {expected_company})"
+                    )
                     context.close()
                     return False
-            
+
             context.close()
             return True
         except Exception as e:

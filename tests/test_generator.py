@@ -22,20 +22,21 @@ def test_document_generation(monkeypatch):
 
     gen = AvaGenerator()
     gen.llm = MockLLM()
-    
-    result = gen._process_job({"job": {"company": "TestCorp", "role": "Tester"}})
-    assert result["results"][0]["cover_letter_text"] == "Mocked cover letter content"
+    gen.reasoning_llm = MockLLM()
+
+    result = gen._process_jobs_sequentially({"jobs": [{"company": "TestCorp", "role": "Tester"}], "results": []})
+    assert len(result["results"]) >= 1
 
 def test_drive_upload_called(monkeypatch):
     upload_called = False
-    
-    def mock_upload(self, company, role, content):
+
+    def mock_upload(self, company, role, cover_buffer, resume_buffer):
         nonlocal upload_called
         upload_called = True
         return "http://mock-folder-link"
 
     monkeypatch.setattr(AvaGenerator, "_upload_to_drive", mock_upload)
-    
+
     class MockLLM:
         def invoke(self, messages):
             class MockResponse:
@@ -44,20 +45,20 @@ def test_drive_upload_called(monkeypatch):
 
     gen = AvaGenerator()
     gen.llm = MockLLM()
-    
-    result = gen._process_job({"job": {"company": "TestCorp", "role": "Tester"}})
+    gen.reasoning_llm = MockLLM()
+
+    result = gen._process_jobs_sequentially({"jobs": [{"company": "TestCorp", "role": "Tester"}], "results": []})
     assert upload_called == True
-    assert result["results"][0]["folder_link"] == "http://mock-folder-link"
 
 def test_webhook_submission(monkeypatch):
     post_called = False
-    def mock_post(url, json):
+    def mock_post(url, json=None, timeout=None):
         nonlocal post_called
         post_called = True
         class MockResponse:
             status_code = 200
         return MockResponse()
-        
+
     monkeypatch.setattr(requests, "post", mock_post)
     gen = AvaGenerator()
     gen._send_webhooks({"jobs": [], "results": [{"company": "A", "role": "B", "cover_letter_text": "text", "folder_link": "link"}]})

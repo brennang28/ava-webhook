@@ -8,7 +8,7 @@ import io
 import logging
 from typing import Annotated, TypedDict, List, Dict, Any
 from docx import Document
-from docx.shared import RGBColor
+from docx.shared import RGBColor, Pt
 from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -179,6 +179,17 @@ class AvaGenerator:
         analysis = self._parse_json(res.content)
         return {"job_analysis": analysis}
 
+    @staticmethod
+    def _normalize_mapped_experience(raw: Any) -> list[dict[str, Any]]:
+        if isinstance(raw, list):
+            return [item for item in raw if isinstance(item, dict)]
+        if isinstance(raw, dict):
+            for key in ("mapping", "mappings", "mapped_experience", "experience"):
+                val = raw.get(key)
+                if isinstance(val, list):
+                    return [item for item in val if isinstance(item, dict)]
+        return []
+
     def _map_experience(self, state: JobProcessState):
         analysis = state["job_analysis"]
         resume = state["resume_text"]
@@ -187,7 +198,7 @@ class AvaGenerator:
 
         res = self.reasoning_llm.invoke([SystemMessage(content="You are a career matcher."), HumanMessage(content=prompt)])
         mapping = self._parse_json(res.content)
-        return {"mapped_experience": mapping}
+        return {"mapped_experience": self._normalize_mapped_experience(mapping)}
 
     def _draft_sections(self, state: JobProcessState):
         job = state["job"]
@@ -220,8 +231,9 @@ class AvaGenerator:
             f"1. Adapt the tone to match the Company Vibe (e.g. if luxury, use sophisticated language).\n"
             f"2. Use ONLY the following evidence for factual claims: {mapping}\n"
             f"3. MANDATORY: DO NOT include any brackets `[...]` or choices in the final output.\n"
-            f"4. MANDATORY: If you are not 100% confident in a specific claim, wrap it in <verify>...</verify> tags.\n\n"
-            f"Return the full letter text."
+            f"4. MANDATORY: If you are not 100% confident in a specific claim, wrap it in <verify>...</verify> tags.\n"
+            f"5. CRITICAL: Output ONLY the 3-4 body paragraphs. DO NOT include the header (name, address, contact info, 'Hiring Manager', company name, address), the salutation ('Dear Hiring Manager,'), or the closing ('Sincerely, Ava Aschettino'). The template already contains these elements.\n\n"
+            f"Return ONLY the body paragraphs."
         )
 
         res = self.writing_llm.invoke([SystemMessage(content="Persuasive career writer with a focus on brand alignment."), HumanMessage(content=writing_prompt)])
@@ -271,6 +283,8 @@ class AvaGenerator:
         resume_draft += f"Job: {job.get('role')} at {job.get('company')}\n"
         resume_draft += "="*40 + "\n\n"
         for item in state.get("mapped_experience", []):
+            if not isinstance(item, dict):
+                continue
             resume_draft += f"REQ: {item.get('requirement')}\nSTAR: {item.get('evidence')}\n\n"
         
         cover_letter_buffer = self._write_to_template(self.template_path, state["final_cover_letter"], True, job)
@@ -320,53 +334,89 @@ class AvaGenerator:
 
     def _write_to_template(self, template_path: str, content: str, is_cover_letter: bool, job: Dict) -> io.BytesIO:
         doc = Document(template_path)
-        
+
         if is_cover_letter:
-            # 1. Resolve Placeholders in Header
+            # 1. Resolve Placeholders
             company_name = job.get("company", "the team")
             job_location = job.get("location", "")
-            
+
             # Use Tavily only if the job location is missing or a generic city name
             is_generic = job_location.lower() in ["remote", "new york, ny", "nyc", "united states", ""]
             if is_generic:
                 address = self._lookup_company_address(company_name)
             else:
                 address = job_location
-            
+
             placeholders = {
                 "[Date]": time.strftime("%B %d, %Y"),
                 "[Hiring Manager Name]": "Hiring Manager",
                 "[Company Name]": company_name,
                 "[Company Address]": address
             }
-            
-            # Identify the salutation line to use as a boundary
-            salutation_idx = -1
-            for i, p in enumerate(doc.paragraphs):
-                # Replace placeholders in any paragraph before or including the salutation
+
+            # Replace placeholders in ALL paragraphs first
+            for p in doc.paragraphs:
                 for key, val in placeholders.items():
                     if key in p.text:
                         p.text = p.text.replace(key, val)
-                
+
+            # 2. Identify the salutation and closing paragraphs
+            salutation_idx = -1
+            closing_idx = -1
+            for i, p in enumerate(doc.paragraphs):
                 if "Dear" in p.text:
                     salutation_idx = i
-                    # Prevent duplicate salutations by stripping it from the content
-                    # if the template already has one we like
-                    content = re.sub(r'^Dear\s+.*?[,:]\s*', '', content.strip(), flags=re.MULTILINE | re.IGNORECASE)
-                    break
-            
-            # 2. Replace Body
-            # Remove everything after the salutation paragraph
+                if "Sincerely" in p.text:
+                    closing_idx = i
+
+            # Strip salutation from LLM content to avoid duplication
+            content = re.sub(r'^Dear\s+.*?[,:]\s*', '', content.strip(), flags=re.MULTILINE | re.IGNORECASE)
+
+            # 3. Save closing paragraphs and remove everything after salutation
+            closing_texts = []
+            if closing_idx != -1 and closing_idx > salutation_idx:
+                for i in range(closing_idx, len(doc.paragraphs)):
+                    text = doc.paragraphs[i].text
+                    if text.strip():
+                        closing_texts.append(text)
+
             if salutation_idx != -1:
                 body_start = salutation_idx + 1
                 while len(doc.paragraphs) > body_start:
                     p = doc.paragraphs[body_start]
                     p._element.getparent().remove(p._element)
-            
-            # Append new body content
+
+            # 4. Filter header lines from LLM content
+            # Use exact-match anchors so legitimate body paragraphs mentioning
+            # the company or "Hiring Manager" are not accidentally stripped.
+            header_patterns = [
+                r"^Ava Aschettino$",
+                r"^New York, NY$",
+                r"^\(516\) 532-3384$",
+                r"^avaaschettino@gmail\.com$",
+                r"^Hiring Manager$",
+                r"^" + re.escape(company_name) + r"$",
+                r"^\[Company Address\]$",
+                r"^Sincerely,$",
+                r"^Best regards,$",
+                r"^Thank you$",
+            ]
+
+            def _is_header_line(line: str) -> bool:
+                stripped = line.strip()
+                for pattern in header_patterns:
+                    if re.search(pattern, stripped, re.IGNORECASE):
+                        return True
+                # Also filter standalone salutations
+                if re.match(r'^Dear\s+', stripped, re.IGNORECASE):
+                    return True
+                return False
+
+            # 5. Append new body content with paragraph spacing
             for line in content.split("\n"):
-                if line.strip():
+                if line.strip() and not _is_header_line(line):
                     p = doc.add_paragraph()
+                    p.paragraph_format.space_after = Pt(12)
                     # Parse <verify> tags for red-highlighting
                     parts = re.split(r'(<verify>.*?</verify>)', line)
                     for part in parts:
@@ -376,15 +426,23 @@ class AvaGenerator:
                             run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
                         else:
                             p.add_run(part)
+
+            # 6. Add back closing paragraphs
+            for closing_text in closing_texts:
+                if closing_text.strip():
+                    p = doc.add_paragraph()
+                    p.paragraph_format.space_after = Pt(12)
+                    p.add_run(closing_text)
         else:
             header_limit = 3
             while len(doc.paragraphs) > header_limit:
                 p = doc.paragraphs[-1]
                 p._element.getparent().remove(p._element)
-            
+
             for line in content.split("\n"):
                 if line.strip():
                     p = doc.add_paragraph()
+                    p.paragraph_format.space_after = Pt(12)
                     # Parse <verify> tags
                     parts = re.split(r'(<verify>.*?</verify>)', line)
                     for part in parts:
@@ -394,7 +452,7 @@ class AvaGenerator:
                             run.font.color.rgb = RGBColor(0xFF, 0x00, 0x00)
                         else:
                             p.add_run(part)
-        
+
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
