@@ -219,7 +219,7 @@ CRITICAL INDUSTRY REJECTION (Score 0):
         # Process in batches
         for i in range(0, len(jobs), batch_size):
             batch = jobs[i:i+batch_size]
-            logger.info(f"Scoring batch {i//batch_size + 1} ({len(batch)} jobs)...")
+            logger.info(f"Scoring batch {i//batch_size + 1} ({len(batch)} jobs)... [Heartbeat: System Active]")
             
             # Format batch for prompt
             job_list_str = ""
@@ -245,6 +245,9 @@ Assign a score from 0-100 for each job based on the profile and success patterns
                         job_copy['relevance_score'] = score_item.score
                         job_copy['relevance_reason'] = score_item.reason
                         all_scored_jobs.append(job_copy)
+                # Log scores for transparency
+                for job in all_scored_jobs:
+                    logger.info(f"Scored: {job.get('role')} @ {job.get('company')} -> {job.get('relevance_score')} (Reason: {job.get('relevance_reason')})")
             except Exception as e:
                 logger.error(f"Error scoring batch: {e}")
                 # Add default scores for the batch to avoid losing them
