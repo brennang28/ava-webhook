@@ -172,26 +172,29 @@ class AvaWatcher:
                     location=filters['location'],
                     results_wanted=15,
                     hours_old=max_age_hours,
+                    description_limit=5000
                 )
                 
                 for _, row in jobs.iterrows():
                     raw_url = row['job_url']
                     company = row['company'] if str(row['company']) != 'nan' else 'Unknown'
                     title_val = row['title'] if str(row['title']) != 'nan' else 'Position'
-                    salary = row['salary_source'] if str(row['salary_source']) != 'nan' else ''
+                    salary_hint = row['salary_source'] if str(row['salary_source']) != 'nan' else ''
                     job_type = row.get('job_type') if str(row.get('job_type')) != 'nan' else None
+                    jobspy_desc = row.get('description', '') if str(row.get('description')) != 'nan' else ''
                     
                     if self.is_new(raw_url, title_val, company):
                         norm_id = self._normalize_url(raw_url)
                         self.session_seen.add(norm_id)
 
-
-                        if self._should_process_job(title_val, company, job_type) and self._verify_link(raw_url, company):
+                        is_verified, verified_desc = self._verify_link(raw_url, company)
+                        if self._should_process_job(title_val, company, job_type) and is_verified:
                             all_found.append({
                                 "company": company,
                                 "role": title_val,
-                                "salary": salary,
-                                "link": norm_id
+                                "salary": salary_hint,
+                                "link": norm_id,
+                                "description": verified_desc or jobspy_desc
                             })
 
                         elif not self._should_process_job(title_val, company, job_type):
@@ -239,12 +242,18 @@ class AvaWatcher:
                 if (is_target_cat or matches_kw) and is_target_loc and self.is_new(link, title, company):
                     if not self._should_process_job(title, company, None): # Playbill doesn't provide job_type easily
                         continue
-                    if not self._verify_link(link, company):
+                    is_verified, description = self._verify_link(link, company)
+                    if not is_verified:
                         logger.warning(f"Skipping unverified Playbill link: {link}")
                         continue
                     norm_link = self._normalize_url(link)
                     self.session_seen.add(norm_link)
-                    all_found.append({"company": company, "role": title, "link": norm_link})
+                    all_found.append({
+                        "company": company, 
+                        "role": title, 
+                        "link": norm_link,
+                        "description": description
+                    })
 
         except Exception as e:
             logger.error(f"Error scraping Playbill: {e}")
@@ -284,15 +293,18 @@ class AvaWatcher:
                 if (self._should_process_job(title, company['name'], job_type) 
                     and self._is_target_location(location) 
                     and self._is_recent(posted)
-                    and self.is_new(str(job['id']), title, company['name'])
-                    and self._verify_link(job['absolute_url'], company['name'])):
-                    norm_url = self._normalize_url(job['absolute_url'])
-                    found.append({
-                        "id": str(job['id']),
-                        "company": company['name'],
-                        "role": title,
-                        "link": norm_url
-                    })
+                    and self.is_new(str(job['id']), title, company['name'])):
+                    
+                    is_verified, description = self._verify_link(job['absolute_url'], company['name'])
+                    if is_verified:
+                        norm_url = self._normalize_url(job['absolute_url'])
+                        found.append({
+                            "id": str(job['id']),
+                            "company": company['name'],
+                            "role": title,
+                            "link": norm_url,
+                            "description": description
+                        })
 
         return found
 
@@ -320,15 +332,18 @@ class AvaWatcher:
             if (self._should_process_job(title, company['name'], job_type) 
                 and self._is_target_location(location) 
                 and self._is_recent(posted)
-                and self.is_new(job['id'], title, company['name'])
-                and self._verify_link(job['hostedUrl'], company['name'])):
-                norm_url = self._normalize_url(job['hostedUrl'])
-                found.append({
-                    "id": job['id'],
-                    "company": company['name'],
-                    "role": title,
-                    "link": norm_url
-                })
+                and self.is_new(job['id'], title, company['name'])):
+                
+                is_verified, description = self._verify_link(job['hostedUrl'], company['name'])
+                if is_verified:
+                    norm_url = self._normalize_url(job['hostedUrl'])
+                    found.append({
+                        "id": job['id'],
+                        "company": company['name'],
+                        "role": title,
+                        "link": norm_url,
+                        "description": description
+                    })
 
         return found
 
@@ -412,8 +427,8 @@ class AvaWatcher:
         return list(variants)
 
     def _verify_link(self, link, expected_company=None):
-        """Verify the link is accurate by performing a browser-based visit
-        to bypass bot detection and check page content."""
+        """Verify the link is accurate and return (is_valid, description)."""
+        description = ""
         try:
             browser = self._get_browser()
             context = browser.new_context(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
@@ -425,7 +440,10 @@ class AvaWatcher:
             if not response or response.status != 200:
                 logger.warning(f"Link verification failed (status {response.status if response else 'N/A'}): {link}")
                 context.close()
-                return False
+                return False, ""
+
+            # Extract full text for AI analysis
+            description = page.evaluate("() => document.body.innerText")
 
             if expected_company:
                 # Give some time for JS to render
@@ -443,7 +461,7 @@ class AvaWatcher:
                         f"Company mismatch for link: {link} (Expected: {expected_company})"
                     )
                     context.close()
-                    return False
+                    return False, ""
 
             # Check for "closed" indicators
             content_lower = page.content().lower()
@@ -451,13 +469,13 @@ class AvaWatcher:
                 if indicator.lower() in content_lower:
                     logger.warning(f"Skipping closed job (indicator: '{indicator}'): {link}")
                     context.close()
-                    return False
+                    return False, ""
 
             context.close()
-            return True
+            return True, description
         except Exception as e:
             logger.warning(f"Error verifying link {link} with Playwright: {e}")
-            return False
+            return False, ""
 
     def _is_recent(self, date_str):
         """Check if a job posting date is within max_age_days. 

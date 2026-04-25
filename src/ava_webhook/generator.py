@@ -173,7 +173,23 @@ class AvaGenerator:
     def _analyze_job(self, state: JobProcessState):
         job = state["job"]
         print(f"--- [Node: Analyze Job] starting for {job.get('company')} ---")
-        prompt = f"Analyze this job description for Ava Aschettino:\nRole: {job.get('role')}\nCompany: {job.get('company')}\nDescription: {job.get('description', 'No description provided')}\n\nIdentify:\n1. Top 3-4 core requirements.\n2. Company vibe.\n3. Primary problem to solve.\n\nReturn JSON: 'requirements', 'vibe', 'problem'."
+        prompt = f"""
+        Analyze this job description for Ava Aschettino:
+        Role: {job.get('role')}
+        Company: {job.get('company')}
+        Salary Hint: {job.get('salary', 'N/A')}
+        Description: {job.get('description', 'No description provided')}
+
+        Identify:
+        1. Top 3-4 core requirements.
+        2. Company vibe.
+        3. Primary problem to solve.
+        4. Salary/Pay range. Look closely at the description. If found, format as '$Min - $Max' or similar. 
+           If not found in description but Salary Hint exists and is valid, use Hint.
+           If absolutely no info, return 'Not Listed'.
+
+        Return JSON only: {{"requirements": [], "vibe": "", "problem": "", "salary": ""}}
+        """
         
         res = self.reasoning_llm.invoke([SystemMessage(content="You are a requirement analyst."), HumanMessage(content=prompt)])
         analysis = self._parse_json(res.content)
@@ -301,6 +317,12 @@ class AvaGenerator:
         processed_job["cover_letter_text"] = state["final_cover_letter"]
         processed_job["resume_draft_text"] = resume_draft
         processed_job["folder_link"] = folder_link
+        
+        # Use AI-extracted salary if available
+        analysis = state.get("job_analysis", {})
+        if analysis.get("salary"):
+            processed_job["salary"] = analysis["salary"]
+            
         return {"results": [processed_job]}
 
     def _lookup_company_address(self, company_name: str) -> str:

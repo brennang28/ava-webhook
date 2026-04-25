@@ -1,18 +1,25 @@
 from jobspy import scrape_jobs
 import pandas as pd
+import json
 
-def test_jobspy():
-    jobs = scrape_jobs(
-        site_name=["linkedin"],
-        search_term="Marketing Coordinator",
-        location="New York, NY",
-        results_wanted=1,
-    )
-    print("Columns:", jobs.columns.tolist())
-    if not jobs.empty:
-        print("First row keys:", jobs.iloc[0].to_dict().keys())
-        print("Description sample:", str(jobs.iloc[0].get('description', 'N/A'))[:100])
-        print("Salary sample:", jobs.iloc[0].get('salary_source', 'N/A'))
+def test_scrape():
+    try:
+        jobs = scrape_jobs(
+            site_name=["linkedin"],
+            search_term="Coordinator",
+            location="New York, NY",
+            results_wanted=1,
+            hours_old=24,
+        )
+        print("Columns found in jobspy output:")
+        print(jobs.columns.tolist())
+        
+        # Display the first row as a dictionary
+        if not jobs.empty:
+            print("\nFirst job data (as dict):")
+            print(json.dumps(jobs.iloc[0].to_dict(), indent=2, default=str))
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    test_jobspy()
+    test_scrape()
