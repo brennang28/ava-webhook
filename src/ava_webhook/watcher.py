@@ -456,10 +456,10 @@ class AvaWatcher:
         
         loc_lower = location_str.lower()
         include = ["new york", "nyc", "brooklyn", "manhattan", "remote", "new york city"]
-        exclude = ["long island city", "queens", "bronx", "staten island"]
+        exclude = ["long island city", "queens", "bronx", "staten island", "jamaica", "hoboken", "new jersey"]
         
         # Check exclusions first
-        if any(ex in loc_lower for ex in exclude):
+        if any(ex in loc_lower for ex in exclude) or re.search(r'\bnj\b', loc_lower):
             return False
             
         # Check inclusions
