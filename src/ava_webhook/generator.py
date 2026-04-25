@@ -59,7 +59,7 @@ class AvaGenerator:
         # 1. Models
         cloud_url = os.getenv("OLLAMA_CLOUD_URL")
         desktop_url = os.getenv("DESKTOP_OLLAMA_URL", "http://127.0.0.1:11434")
-        api_key = os.getenv("OLLAMA_API_KEY")
+        api_key = os.getenv("OLLAMA_AUX2_API_KEY")
 
         # Reasoning Model
         if ":cloud" in reasoning_model and cloud_url:

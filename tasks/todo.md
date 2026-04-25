@@ -29,3 +29,15 @@
 - [x] **Phase 3: Verification**
     - [x] Verified binary buffer generation and content injection via standalone test
     - [x] Confirmed file size and structure preservation (CL ~7.8K, Resume ~378K)
+
+## Ollama API Key Migration (April 25)
+- [x] **Phase 1: Key Migration**
+    - [x] Update `src/ava_webhook/generator.py` to use `OLLAMA_AUX2_API_KEY`
+    - [x] Update `src/ava_webhook/scout.py` to use `OLLAMA_AUX2_API_KEY`
+    - [x] Update `scripts/test_ollama_cloud.py` to use `OLLAMA_AUX2_API_KEY`
+    - [x] Update `scripts/list_models.py` to use `OLLAMA_AUX2_API_KEY`
+- [x] **Phase 2: Verification**
+    - [x] Run `scripts/test_ollama_cloud.py` to verify key access
+    - [x] Run `scripts/list_models.py` to check model availability
+    - [x] Verify background process logs after next execution
+

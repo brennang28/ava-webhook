@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 cloud_url = os.getenv("OLLAMA_CLOUD_URL", "https://ollama.com")
-api_key = os.getenv("OLLAMA_API_KEY")
+api_key = os.getenv("OLLAMA_AUX2_API_KEY")
 
 headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 

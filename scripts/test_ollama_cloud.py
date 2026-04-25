@@ -43,10 +43,10 @@ def test_model(model_name, base_url, api_key):
 
 if __name__ == "__main__":
     cloud_url = os.getenv("OLLAMA_CLOUD_URL", "https://ollama.com")
-    api_key = os.getenv("OLLAMA_API_KEY")
+    api_key = os.getenv("OLLAMA_AUX2_API_KEY")
     
     if not api_key:
-        print("Error: OLLAMA_API_KEY not found in .env")
+        print("Error: OLLAMA_AUX2_API_KEY not found in .env")
         exit(1)
         
     with open("config.json", "r") as f:

@@ -68,7 +68,7 @@ class AvaScout:
         scouting_model = models_config.get("scouting", "gemma4:31b")
         
         self.db_path = db_path
-        api_key = os.getenv("OLLAMA_API_KEY")
+        api_key = os.getenv("OLLAMA_AUX2_API_KEY")
         base_url = os.getenv("OLLAMA_CLOUD_URL", "https://ollama.com")
         
         if api_key:
