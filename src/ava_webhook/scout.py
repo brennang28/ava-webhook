@@ -185,6 +185,7 @@ Ava has successfully secured interviews for roles matching these patterns:
 
 - BOOST: Give a +20 point bonus to any job that aligns with these patterns.
 - REJECT/PENALIZE: Reject or give 0 points to any role requesting more than 2 years of experience. This is a STRICT constraint.
+- REJECT: Give 0 points to any role that is an Internship, Temporary position, or Contract role.
 - REASON: These factors are historically proven to work for Ava's resume/profile.
 """
 
@@ -213,6 +214,7 @@ SCORING GUIDANCE:
 CRITICAL INDUSTRY REJECTION (Score 0):
 - Reject any roles in: Food Service, Hospitality, Construction, Manual Labor, or Retail Sales (unless for a major Entertainment brand).
 - Reject if job requires > 2 years of experience.
+- Reject any Internship, Temporary position, or Contract role.
 - DO NOT be afraid to give a score of 0. Quality over quantity.
 """
 
@@ -230,6 +232,7 @@ CRITICAL INDUSTRY REJECTION (Score 0):
 Rank the provided jobs by relevance to the candidate profile. 
 CRITICAL CONSTRAINTS:
 1. Experience: Only select roles for 0-2 years of experience. If a role clearly requires 3+, 5+, or senior experience, give it a score of 0.
+2. Role Type: Only select permanent roles. Give a score of 0 to any Internships, Temporary roles, or Contract positions.
 2. Return Format: You MUST return a JSON object with a single key "scores" containing a list of job scores.
 Example: {{"scores": [{{"job_index": 0, "score": 85, "reason": "..."}}]}}
 Do not include any preamble or extra text.

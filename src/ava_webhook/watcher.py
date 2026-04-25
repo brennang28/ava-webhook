@@ -179,13 +179,14 @@ class AvaWatcher:
                     company = row['company'] if str(row['company']) != 'nan' else 'Unknown'
                     title_val = row['title'] if str(row['title']) != 'nan' else 'Position'
                     salary = row['salary_source'] if str(row['salary_source']) != 'nan' else ''
+                    job_type = row.get('job_type') if str(row.get('job_type')) != 'nan' else None
                     
                     if self.is_new(raw_url, title_val, company):
                         norm_id = self._normalize_url(raw_url)
                         self.session_seen.add(norm_id)
 
 
-                        if self._should_process_job(title_val, company) and self._verify_link(raw_url, company):
+                        if self._should_process_job(title_val, company, job_type) and self._verify_link(raw_url, company):
                             all_found.append({
                                 "company": company,
                                 "role": title_val,
@@ -193,7 +194,7 @@ class AvaWatcher:
                                 "link": norm_id
                             })
 
-                        elif not self._should_process_job(title_val, company):
+                        elif not self._should_process_job(title_val, company, job_type):
                             logger.debug(f"Filtered role: {title_val}")
                         else:
                             logger.warning(f"Unverified link skipped: {norm_id}")
@@ -236,7 +237,7 @@ class AvaWatcher:
                 is_target_loc = self._is_target_location(location_text)
 
                 if (is_target_cat or matches_kw) and is_target_loc and self.is_new(link, title, company):
-                    if not self._should_process_job(title, company):
+                    if not self._should_process_job(title, company, None): # Playbill doesn't provide job_type easily
                         continue
                     if not self._verify_link(link, company):
                         logger.warning(f"Skipping unverified Playbill link: {link}")
@@ -278,8 +279,9 @@ class AvaWatcher:
                 title = job.get('title', '')
                 location = job.get('location', {}).get('name', '')
                 posted = job.get('updated_at', '')
+                job_type = job.get('employment_type') # Greenhouse job type
                 
-                if (self._should_process_job(title, company['name']) 
+                if (self._should_process_job(title, company['name'], job_type) 
                     and self._is_target_location(location) 
                     and self._is_recent(posted)
                     and self.is_new(str(job['id']), title, company['name'])
@@ -310,11 +312,12 @@ class AvaWatcher:
         for job in response:
             title = job.get('text', '')
             location = job.get('categories', {}).get('location', '')
+            job_type = job.get('categories', {}).get('commitment') # Lever job type (e.g. Full-time)
             # Lever uses millisecond epoch timestamps
             created_ms = job.get('createdAt', 0)
             posted = datetime.fromtimestamp(created_ms / 1000).isoformat() if created_ms else ''
             
-            if (self._should_process_job(title, company['name']) 
+            if (self._should_process_job(title, company['name'], job_type) 
                 and self._is_target_location(location) 
                 and self._is_recent(posted)
                 and self.is_new(job['id'], title, company['name'])
@@ -329,7 +332,14 @@ class AvaWatcher:
 
         return found
 
-    def _should_process_job(self, title, company=""):
+    def _should_process_job(self, title, company="", job_type=None):
+        # 0. Check Job Type Metadata (if provided)
+        if job_type:
+            blocked_types = ["contract", "internship", "temporary", "intern", "temp", "freelance"]
+            if any(bt in job_type.lower() for bt in blocked_types):
+                logger.info(f"Skipping blocked job type '{job_type}': {title} @ {company}")
+                return False
+
         # 1. Check for manual exclusions (Blocklist)
         exclusions = self.config.get('exclusions', {})
         
@@ -340,11 +350,12 @@ class AvaWatcher:
                 logger.info(f"Skipping blocked company: {company}")
                 return False
                 
-        # Check blocked keywords in title
+        # Check blocked keywords in title with word boundaries to avoid false positives (e.g. Intern vs Internal)
         blocked_kws = exclusions.get('blocked_keywords', [])
-        if any(bk.lower() in title.lower() for bk in blocked_kws):
-            logger.info(f"Skipping blocked keyword in role: {title}")
-            return False
+        for bk in blocked_kws:
+            if re.search(rf"\b{re.escape(bk)}\b", title, re.IGNORECASE):
+                logger.info(f"Skipping blocked keyword '{bk}' in role: {title}")
+                return False
 
         # 2. Existing filters
         if "manager" in title.lower():

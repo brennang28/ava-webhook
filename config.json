@@ -47,7 +47,8 @@
       "Cashier", "Medical Assistant", "Dental Assistant", "Grill Master", 
       "Catering Assistant", "Inventory Control", "Return Goods", "Home Care", 
       "Sales Associate", "Retail Sales", "Staffing Coordinator", "Admissions Coordinator",
-      "Center Director"
+      "Center Director", "Internship", "Intern", "Temporary", "Temp", "Contract", 
+      "Contractor", "Freelance"
     ]
   }
 }
