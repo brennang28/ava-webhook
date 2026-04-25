@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
+# Indicators that a job is no longer active
+CLOSED_INDICATORS = [
+    "no longer accepting applications",
+    "this job is closed",
+    "this job is no longer available",
+    "no longer available",
+    "this job has expired",
+    "position is no longer available"
+]
+
 class AvaWatcher:
     def __init__(self, config_path="config.json", db_path="jobs.db"):
         with open(config_path, 'r') as f:
@@ -421,6 +431,14 @@ class AvaWatcher:
                     logger.warning(
                         f"Company mismatch for link: {link} (Expected: {expected_company})"
                     )
+                    context.close()
+                    return False
+
+            # Check for "closed" indicators
+            content_lower = page.content().lower()
+            for indicator in CLOSED_INDICATORS:
+                if indicator.lower() in content_lower:
+                    logger.warning(f"Skipping closed job (indicator: '{indicator}'): {link}")
                     context.close()
                     return False
 
