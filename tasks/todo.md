@@ -14,7 +14,7 @@
     - [x] Robustify `watcher.py` and `generator.py` for varying schemas
     - [x] Test persistence by disconnecting SSH
 - [ ] **Phase 4: Verification**
-    - [ ] Verify 6 AM execution tomorrow morning
+    - [ ] Verify 6 AM execution on Mon (Apr 27) morning (Every other day)
     - [x] Initial Manual Recovery (20 jobs currently processing)
     - [ ] Final Walkthrough
 
