@@ -34,7 +34,7 @@ CLOSED_INDICATORS = [
 ]
 
 class AvaWatcher:
-    def __init__(self, config_path="config.json", db_path="jobs.db"):
+    def __init__(self, config_path="config.json", db_path="jobs.db", langfuse_client=None):
         with open(config_path, 'r') as f:
             self.config = json.load(f)
         self.db_path = db_path
@@ -43,6 +43,7 @@ class AvaWatcher:
         self.applied_history_set = self._load_applied_history()
         self.playwright = None
         self.browser = None
+        self.langfuse = langfuse_client or Langfuse()
         self._init_db()
 
     def _generate_run_session_id(self):
@@ -156,11 +157,22 @@ class AvaWatcher:
             payload['role'] = role
             payload['company'] = company
 
-            response = requests.post(WEBHOOK_URL, json=payload, timeout=15)
-            if response.status_code == 200:
-                logger.info(f"Dispatched: {role} @ {company}")
-            else:
-                logger.error(f"Failed to dispatch (HTTP {response.status_code}): {response.text}")
+            with self.langfuse.start_as_current_observation(
+                name="dispatch-webhook",
+                as_type="tool",
+                input={"company": company, "role": role},
+            ) as observation:
+                response = requests.post(WEBHOOK_URL, json=payload, timeout=15)
+                observation.update(output={
+                    "status_code": response.status_code,
+                    "company": company,
+                    "role": role,
+                })
+
+                if response.status_code == 200:
+                    logger.info(f"Dispatched: {role} @ {company}")
+                else:
+                    logger.error(f"Failed to dispatch (HTTP {response.status_code}): {response.text}")
         except Exception as e:
             logger.error(f"Error sending webhook for {job.get('company', 'Unknown')}: {e}", exc_info=True)
 
@@ -435,52 +447,101 @@ class AvaWatcher:
     def _verify_link(self, link, expected_company=None):
         """Verify the link is accurate and return (is_valid, description)."""
         description = ""
+        checked_closed = False
+        company_match = None
+        response_status = None
         try:
-            browser = self._get_browser()
-            context = browser.new_context(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
-            page = context.new_page()
+            with self.langfuse.start_as_current_observation(
+                name="verify-link",
+                as_type="tool",
+                input={
+                    "link": link,
+                    "expected_company": expected_company,
+                },
+            ) as observation:
+                browser = self._get_browser()
+                context = browser.new_context(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+                page = context.new_page()
 
-            # Navigate to the link with a timeout
-            response = page.goto(link, wait_until="domcontentloaded", timeout=30000)
+                # Navigate to the link with a timeout
+                response = page.goto(link, wait_until="domcontentloaded", timeout=30000)
+                response_status = response.status if response else None
 
-            if not response or response.status != 200:
-                logger.warning(f"Link verification failed (status {response.status if response else 'N/A'}): {link}")
+                if not response or response.status != 200:
+                    logger.warning(f"Link verification failed (status {response.status if response else 'N/A'}): {link}")
+                    context.close()
+                    observation.update(output={"verified": False, "status_code": response_status})
+                    return False, ""
+
+                # Extract full text for AI analysis
+                description = page.evaluate("() => document.body.innerText")
+
+                if expected_company:
+                    # Give some time for JS to render
+                    page.wait_for_timeout(2000)
+                    content = page.content().lower()
+
+                    variants = self._company_name_variants(expected_company)
+                    content_match = any(variant in content for variant in variants)
+                    company_match = content_match
+
+                    if not content_match:
+                        logger.debug(
+                            f"Company name variants tried for {link}: {variants}"
+                        )
+                        logger.warning(
+                            f"Company mismatch for link: {link} (Expected: {expected_company})"
+                        )
+                        context.close()
+                        observation.update(
+                            output={
+                                "verified": False,
+                                "status_code": response_status,
+                                "company_match": False,
+                            }
+                        )
+                        return False, ""
+
+                # Check for "closed" indicators
+                content_lower = page.content().lower()
+                for indicator in CLOSED_INDICATORS:
+                    if indicator.lower() in content_lower:
+                        checked_closed = True
+                        logger.warning(f"Skipping closed job (indicator: '{indicator}'): {link}")
+                        context.close()
+                        observation.update(
+                            output={
+                                "verified": False,
+                                "status_code": response_status,
+                                "company_match": company_match,
+                                "closed_indicator": indicator,
+                            }
+                        )
+                        return False, ""
+
                 context.close()
-                return False, ""
-
-            # Extract full text for AI analysis
-            description = page.evaluate("() => document.body.innerText")
-
-            if expected_company:
-                # Give some time for JS to render
-                page.wait_for_timeout(2000)
-                content = page.content().lower()
-
-                variants = self._company_name_variants(expected_company)
-                content_match = any(variant in content for variant in variants)
-
-                if not content_match:
-                    logger.debug(
-                        f"Company name variants tried for {link}: {variants}"
-                    )
-                    logger.warning(
-                        f"Company mismatch for link: {link} (Expected: {expected_company})"
-                    )
-                    context.close()
-                    return False, ""
-
-            # Check for "closed" indicators
-            content_lower = page.content().lower()
-            for indicator in CLOSED_INDICATORS:
-                if indicator.lower() in content_lower:
-                    logger.warning(f"Skipping closed job (indicator: '{indicator}'): {link}")
-                    context.close()
-                    return False, ""
-
-            context.close()
-            return True, description
+                observation.update(
+                    output={
+                        "verified": True,
+                        "status_code": response_status,
+                        "company_match": company_match,
+                        "checked_closed": checked_closed,
+                    }
+                )
+                return True, description
         except Exception as e:
             logger.warning(f"Error verifying link {link} with Playwright: {e}")
+            try:
+                self.langfuse.update_current_span(
+                    output={
+                        "verified": False,
+                        "status_code": response_status,
+                        "company_match": company_match,
+                        "error": str(e),
+                    }
+                )
+            except Exception:
+                pass
             return False, ""
 
     def _is_recent(self, date_str):
@@ -549,14 +610,16 @@ class AvaWatcher:
         logger.info(f"Total pool for ranking: {len(dedup_pool)} jobs")
         logger.info(f"Starting run session: {self.run_session_id}")
 
-        langfuse_client = Langfuse()
+        langfuse_client = self.langfuse
         with langfuse_client.start_as_current_observation(
             name=f"scheduled-run-{self.run_session_id}",
             as_type="span",
+            input={"job_count": len(dedup_pool)},
+            metadata={"run_session_id": self.run_session_id},
         ):
             with propagate_attributes(session_id=self.run_session_id):
-                scout = AvaScout()
-                generator = AvaGenerator()
+                scout = AvaScout(langfuse_client=langfuse_client)
+                generator = AvaGenerator(langfuse_client=langfuse_client)
                 try:
                     top_jobs = scout.rank(dedup_pool, limit=25)
                     logger.info(f"Scout selected {len(top_jobs)} relevant opportunities. Starting fulfillment...")

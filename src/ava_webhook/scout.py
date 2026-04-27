@@ -50,7 +50,16 @@ class ScoutState(TypedDict):
 # --- Agent Implementation ---
 
 class AvaScout:
-    def __init__(self, config_path="config.json", db_path="jobs.db", profile_path="research/data/profile.json", applied_path="research/data/applied_companies.json", patterns_path="research/data/success_patterns.json", history_path="research/data/applied_history.json"):
+    def __init__(
+        self,
+        config_path="config.json",
+        db_path="jobs.db",
+        profile_path="research/data/profile.json",
+        applied_path="research/data/applied_companies.json",
+        patterns_path="research/data/success_patterns.json",
+        history_path="research/data/applied_history.json",
+        langfuse_client: Langfuse | None = None,
+    ):
         self.profile_path = profile_path
         self.applied_path = applied_path
         self.patterns_path = patterns_path
@@ -78,7 +87,7 @@ class AvaScout:
         self.structured_llm = self.llm.with_structured_output(RankingResult)
         
         self.workflow = self._build_graph()
-        self.langfuse = Langfuse()
+        self.langfuse = langfuse_client or Langfuse()
 
     def _init_llm(self, model_name: str, **kwargs) -> ChatOllama:
         """Initializes ChatOllama with appropriate base URL and auth."""
@@ -95,6 +104,24 @@ class AvaScout:
                 base_url=self.desktop_url,
                 **kwargs
             )
+
+    def _with_generation_observation(self, name: str, model: str, prompt: str, model_parameters: dict, invoke_fn):
+        with self.langfuse.start_as_current_observation(
+            name=name,
+            as_type="generation",
+            input={
+                "prompt_excerpt": prompt[:1500],
+                "prompt_length": len(prompt),
+            },
+            model=model,
+            model_parameters={k: v for k, v in model_parameters.items() if v is not None},
+        ) as generation:
+            result = invoke_fn()
+            output = getattr(result, "content", result)
+            if isinstance(output, str) and len(output) > 2000:
+                output = output[:2000] + "..."
+            generation.update(output={"content": output})
+            return result
 
     def _get_llm_with_config(self, model_name: str, config: dict):
         """Returns a ChatOllama instance with parameters from Langfuse config."""
@@ -272,7 +299,13 @@ CRITICAL INDUSTRY REJECTION (Score 0):
             structured_llm = llm.with_structured_output(RankingResult)
             
             try:
-                result = structured_llm.invoke([system_msg, human_msg])
+                result = self._with_generation_observation(
+                    name="score-jobs-batch",
+                    model=self.scouting_model,
+                    prompt=human_msg_content,
+                    model_parameters=prompt_obj_sys.config,
+                    invoke_fn=lambda: structured_llm.invoke([system_msg, human_msg]),
+                )
                 # Map scores back to job objects
                 for score_item in result.scores:
                     if 0 <= score_item.job_index < len(batch):
@@ -343,7 +376,13 @@ CRITICAL INDUSTRY REJECTION (Score 0):
             "top_jobs": []
         }
         
-        final_state = self.workflow.invoke(initial_state)
+        with self.langfuse.start_as_current_observation(
+            name="rank-jobs",
+            as_type="span",
+            input={"job_count": len(filtered_jobs), "limit": limit},
+            metadata={"component": "AvaScout"},
+        ):
+            final_state = self.workflow.invoke(initial_state)
         return final_state['top_jobs'][:limit]
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ class JobProcessState(TypedDict):
     folder_link: str
 
 class AvaGenerator:
-    def __init__(self, config_path="config.json"):
+    def __init__(self, config_path="config.json", langfuse_client: Langfuse | None = None):
         # 0. Load Config
         self.config = {}
         if os.path.exists(config_path):
@@ -75,7 +75,7 @@ class AvaGenerator:
         
         # 3. Main Workflow
         self.workflow = self._build_graph()
-        self.langfuse = Langfuse()
+        self.langfuse = langfuse_client or Langfuse()
 
     def _init_llm(self, model_name: str, **kwargs) -> ChatOllama:
         """Initializes ChatOllama with appropriate base URL and auth."""
@@ -119,10 +119,15 @@ class AvaGenerator:
         return builder.compile()
 
     def _process_jobs_sequentially(self, state: OverallState):
-        results = []
-        for job in state["jobs"]:
-            print(f"--- Processing {job.get('company')} sequentially ---")
-            job_state: JobProcessState = {
+        with self.langfuse.start_as_current_observation(
+            name="process-jobs-sequentially",
+            as_type="span",
+            input={"job_count": len(state["jobs"])},
+        ):
+            results = []
+            for job in state["jobs"]:
+                print(f"--- Processing {job.get('company')} sequentially ---")
+                job_state: JobProcessState = {
                 "job": job,
                 "resume_text": self.resume_text,
                 "template_text": self.template_text,
@@ -178,6 +183,44 @@ class AvaGenerator:
             
         return self._init_llm(model_name, **params)
 
+    def _with_generation_observation(self, name: str, model: str, prompt: str, model_parameters: dict, invoke_fn):
+        with self.langfuse.start_as_current_observation(
+            name=name,
+            as_type="generation",
+            input={
+                "prompt_excerpt": prompt[:1500],
+                "prompt_length": len(prompt),
+            },
+            model=model,
+            model_parameters={k: v for k, v in model_parameters.items() if v is not None},
+        ) as generation:
+            result = invoke_fn()
+            output = getattr(result, "content", result)
+            if isinstance(output, str) and len(output) > 2000:
+                output = output[:2000] + "..."
+            generation.update(output={"content": output})
+            return result
+
+    def _with_tool_observation(self, name: str, input_data: dict):
+        return self.langfuse.start_as_current_observation(
+            name=name,
+            as_type="tool",
+            input=input_data,
+        )
+
+    def _run_drive_step(self, step_name: str, input_data: dict, action):
+        with self._with_tool_observation(
+            name=f"upload-to-drive/{step_name}",
+            input_data=input_data,
+        ) as observation:
+            try:
+                result = action()
+                observation.update(output={"step": step_name, "status": "success"})
+                return result
+            except Exception as e:
+                observation.update(output={"step": step_name, "status": "error", "error": str(e)})
+                raise
+
     def _analyze_job(self, state: JobProcessState):
         job = state["job"]
         print(f"--- [Node: Analyze Job] starting for {job.get('company')} ---")
@@ -191,7 +234,13 @@ class AvaGenerator:
         )
         
         llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
-        res = llm.invoke([SystemMessage(content="You are a requirement analyst."), HumanMessage(content=compiled_prompt)])
+        res = self._with_generation_observation(
+            name="analyze-job",
+            model=self.reasoning_model,
+            prompt=compiled_prompt,
+            model_parameters=prompt_obj.config,
+            invoke_fn=lambda: llm.invoke([SystemMessage(content="You are a requirement analyst."), HumanMessage(content=compiled_prompt)]),
+        )
         analysis = self._parse_json(res.content)
         return {"job_analysis": analysis}
 
@@ -218,7 +267,13 @@ class AvaGenerator:
         )
         
         llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
-        res = llm.invoke([SystemMessage(content="You are a career matcher."), HumanMessage(content=compiled_prompt)])
+        res = self._with_generation_observation(
+            name="map-experience",
+            model=self.reasoning_model,
+            prompt=compiled_prompt,
+            model_parameters=prompt_obj.config,
+            invoke_fn=lambda: llm.invoke([SystemMessage(content="You are a career matcher."), HumanMessage(content=compiled_prompt)]),
+        )
         mapping = self._parse_json(res.content)
         return {"mapped_experience": self._normalize_mapped_experience(mapping)}
 
@@ -238,7 +293,13 @@ class AvaGenerator:
         )
         
         llm_sel = self._get_llm_with_config(self.reasoning_llm, prompt_obj_sel.config)
-        selection_res = llm_sel.invoke([SystemMessage(content="You are a logic engine that resolves template choices."), HumanMessage(content=selection_prompt)])
+        selection_res = self._with_generation_observation(
+            name="resolve-template",
+            model=self.reasoning_model,
+            prompt=selection_prompt,
+            model_parameters=prompt_obj_sel.config,
+            invoke_fn=lambda: llm_sel.invoke([SystemMessage(content="You are a logic engine that resolves template choices."), HumanMessage(content=selection_prompt)]),
+        )
         resolved_template = selection_res.content
 
         # Phase 2: Writing (Prose Polishing)
@@ -252,7 +313,13 @@ class AvaGenerator:
         )
         
         llm_write = self._get_llm_with_config(self.writing_llm, prompt_obj_write.config)
-        res = llm_write.invoke([SystemMessage(content="Persuasive career writer with a focus on brand alignment."), HumanMessage(content=writing_prompt)])
+        res = self._with_generation_observation(
+            name="write-cover-letter",
+            model=self.writing_model,
+            prompt=writing_prompt,
+            model_parameters=prompt_obj_write.config,
+            invoke_fn=lambda: llm_write.invoke([SystemMessage(content="Persuasive career writer with a focus on brand alignment."), HumanMessage(content=writing_prompt)]),
+        )
         return {"final_cover_letter": res.content}
 
     def _verify_accuracy(self, state: JobProcessState):
@@ -270,7 +337,13 @@ class AvaGenerator:
         )
         
         llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
-        res = llm.invoke([SystemMessage(content="Strict factual auditor."), HumanMessage(content=compiled_prompt)])
+        res = self._with_generation_observation(
+            name="verify-accuracy",
+            model=self.reasoning_model,
+            prompt=compiled_prompt,
+            model_parameters=prompt_obj.config,
+            invoke_fn=lambda: llm.invoke([SystemMessage(content="Strict factual auditor."), HumanMessage(content=compiled_prompt)]),
+        )
         report = self._parse_json(res.content)
         return {"accuracy_report": json.dumps(report)}
 
@@ -286,7 +359,13 @@ class AvaGenerator:
         )
         
         llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
-        res = llm.invoke([SystemMessage(content="Senior hiring editor focused on brand and integrity."), HumanMessage(content=compiled_prompt)])
+        res = self._with_generation_observation(
+            name="critique-review",
+            model=self.reasoning_model,
+            prompt=compiled_prompt,
+            model_parameters=prompt_obj.config,
+            invoke_fn=lambda: llm.invoke([SystemMessage(content="Senior hiring editor focused on brand and integrity."), HumanMessage(content=compiled_prompt)]),
+        )
         return {"revision_count": state["revision_count"] + 1, "critique": res.content}
 
     def _finalize_job(self, state: JobProcessState):
@@ -351,7 +430,13 @@ class AvaGenerator:
             )
             
             llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
-            res = llm.invoke([SystemMessage(content="Address extractor."), HumanMessage(content=compiled_prompt)])
+            res = self._with_generation_observation(
+                name="extract-address",
+                model=self.reasoning_model,
+                prompt=compiled_prompt,
+                model_parameters=prompt_obj.config,
+                invoke_fn=lambda: llm.invoke([SystemMessage(content="Address extractor."), HumanMessage(content=compiled_prompt)]),
+            )
             return res.content.strip()
         except Exception as e:
             logger.error(f"Address lookup failed: {e}")
@@ -491,34 +576,67 @@ class AvaGenerator:
         sanitized_company = company.replace(' ', '_').replace('/', '_')
         local_cover_path = os.path.join(backup_dir, f"{sanitized_company}_CoverLetter.docx")
         local_resume_path = os.path.join(backup_dir, f"{sanitized_company}_ResumeDraft.docx")
-        
-        try:
-            with open(local_cover_path, "wb") as f:
-                f.write(cover_buffer.getvalue())
-            with open(local_resume_path, "wb") as f:
-                f.write(resume_buffer.getvalue())
-        except Exception as e:
-            logger.error(f"Local backup failed: {e}")
-        
-        else:
+        upload_result = {
+            "local_backup": False,
+            "drive_upload": False,
+            "folder_link": None,
+            "error": None,
+            "folder_created": False,
+            "cover_letter_uploaded": False,
+            "resume_uploaded": False,
+        }
+
+        with self._with_tool_observation(
+            name="upload-to-drive",
+            input_data={
+                "company": company,
+                "role": role,
+                "backup_dir": backup_dir,
+                "token_path": token_path,
+            },
+        ) as observation:
+            try:
+                with open(local_cover_path, "wb") as f:
+                    f.write(cover_buffer.getvalue())
+                with open(local_resume_path, "wb") as f:
+                    f.write(resume_buffer.getvalue())
+                upload_result["local_backup"] = True
+            except Exception as e:
+                upload_result["error"] = f"Local backup failed: {e}"
+                logger.error(upload_result["error"])
+                observation.update(output=upload_result)
+                return f"Local backup failed: {e}"
+
             if not os.path.exists(token_path):
+                upload_result["error"] = "token.json missing"
+                observation.update(output=upload_result)
                 return f"Saved locally only (token.json missing): {local_cover_path}"
-                
+
             try:
                 creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive.file'])
                 drive_service = build('drive', 'v3', credentials=creds)
-                
+
                 folder_metadata = {
                     'name': f"{company} - {role}",
                     'mimeType': 'application/vnd.google-apps.folder',
                     'parents': [parent_folder_id]
                 }
-                folder = drive_service.files().create(body=folder_metadata, fields='id, webViewLink').execute()
+                folder = self._run_drive_step(
+                    "create-folder",
+                    {
+                        "company": company,
+                        "role": role,
+                        "parent_folder_id": parent_folder_id,
+                        "mimeType": folder_metadata['mimeType'],
+                    },
+                    lambda: drive_service.files().create(body=folder_metadata, fields='id, webViewLink').execute(),
+                )
                 folder_id = folder.get('id')
-                
+                upload_result["folder_created"] = True
+
                 cv_metadata = {
                     'name': f'Cover Letter - {company}',
-                    'mimeType': 'application/vnd.google-apps.document',
+                    'mimeType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     'parents': [folder_id]
                 }
                 cv_media = MediaInMemoryUpload(
@@ -526,7 +644,18 @@ class AvaGenerator:
                     mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
                     resumable=True
                 )
-                drive_service.files().create(body=cv_metadata, media_body=cv_media, fields='id').execute()
+                self._run_drive_step(
+                    "upload-cover-letter",
+                    {
+                        "company": company,
+                        "role": role,
+                        "file_name": cv_metadata['name'],
+                        "mimeType": cv_metadata['mimeType'],
+                        "parent_folder_id": folder_id,
+                    },
+                    lambda: drive_service.files().create(body=cv_metadata, media_body=cv_media, fields='id').execute(),
+                )
+                upload_result["cover_letter_uploaded"] = True
 
                 rs_metadata = {
                     'name': f'Resume Tailoring Draft - {company}',
@@ -538,10 +667,26 @@ class AvaGenerator:
                     mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document', 
                     resumable=True
                 )
-                drive_service.files().create(body=rs_metadata, media_body=rs_media, fields='id').execute()
-                
-                return folder.get('webViewLink', "No link generated")
+                self._run_drive_step(
+                    "upload-resume",
+                    {
+                        "company": company,
+                        "role": role,
+                        "file_name": rs_metadata['name'],
+                        "mimeType": rs_metadata['mimeType'],
+                        "parent_folder_id": folder_id,
+                    },
+                    lambda: drive_service.files().create(body=rs_metadata, media_body=rs_media, fields='id').execute(),
+                )
+                upload_result["resume_uploaded"] = True
+
+                upload_result["drive_upload"] = True
+                upload_result["folder_link"] = folder.get('webViewLink', "No link generated")
+                observation.update(output=upload_result)
+                return upload_result["folder_link"]
             except Exception as e:
+                upload_result["error"] = f"Drive upload failed: {e}"
+                observation.update(output=upload_result)
                 return f"Saved locally! Drive error: {str(e)}"
 
     def _send_webhooks(self, state: OverallState):
@@ -550,17 +695,25 @@ class AvaGenerator:
              return {}
             
         print(f"--- [Node: Send Webhooks] sending {len(state['results'])} responses ---")
-        for job in state["results"]:
-            try:
-                payload = {
-                    "company": job.get("company", "Unknown"),
-                    "role": job.get("role") or job.get("title") or "Position",
-                    "salary": job.get("salary", "N/A"),
-                    "link": job.get("link", ""),
-                    "folder_link": job.get("folder_link", "")
-                }
-                requests.post(webhook_url, json=payload, timeout=15)
-                logger.info(f"Dispatched: {payload['role']} @ {payload['company']}")
-            except Exception as e:
-                logger.error(f"Error sending webhook: {e}")
+        with self._with_tool_observation(
+            name="send-webhooks",
+            input_data={"result_count": len(state.get('results', []))},
+        ) as observation:
+            success_count = 0
+            for job in state["results"]:
+                try:
+                    payload = {
+                        "company": job.get("company", "Unknown"),
+                        "role": job.get("role") or job.get("title") or "Position",
+                        "salary": job.get("salary", "N/A"),
+                        "link": job.get("link", ""),
+                        "folder_link": job.get("folder_link", "")
+                    }
+                    response = requests.post(webhook_url, json=payload, timeout=15)
+                    if response.status_code == 200:
+                        success_count += 1
+                    logger.info(f"Dispatched: {payload['role']} @ {payload['company']}")
+                except Exception as e:
+                    logger.error(f"Error sending webhook: {e}")
+            observation.update(output={"success_count": success_count, "payload_count": len(state.get('results', []))})
         return {}
