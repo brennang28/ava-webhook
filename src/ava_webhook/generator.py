@@ -11,6 +11,7 @@ from docx import Document
 from docx.shared import RGBColor, Pt
 from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
+from langfuse import Langfuse
 from langchain_core.messages import SystemMessage, HumanMessage
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -53,40 +54,16 @@ class AvaGenerator:
                 print(f"Error loading config in generator: {e}")
         
         models_config = self.config.get("models", {})
-        reasoning_model = models_config.get("reasoning", "gemma4:26b")
-        writing_model = models_config.get("writing", "qwen2.5vl:3b")
+        self.reasoning_model = models_config.get("reasoning", "gemma4:26b")
+        self.writing_model = models_config.get("writing", "qwen2.5vl:3b")
 
         # 1. Models
-        cloud_url = os.getenv("OLLAMA_CLOUD_URL")
-        desktop_url = os.getenv("DESKTOP_OLLAMA_URL", "http://127.0.0.1:11434")
-        api_key = os.getenv("OLLAMA_AUX2_API_KEY")
+        self.cloud_url = os.getenv("OLLAMA_CLOUD_URL")
+        self.desktop_url = os.getenv("DESKTOP_OLLAMA_URL", "http://127.0.0.1:11434")
+        self.ollama_api_key = os.getenv("OLLAMA_AUX2_API_KEY")
 
-        # Reasoning Model
-        if ":cloud" in reasoning_model and cloud_url:
-            logger.info(f"Using Ollama Cloud for reasoning ({reasoning_model})")
-            self.reasoning_llm = ChatOllama(
-                model=reasoning_model,
-                base_url=cloud_url,
-                client_kwargs={"headers": {"Authorization": f"Bearer {api_key}"}} if api_key else {}
-            )
-        else:
-            self.reasoning_llm = ChatOllama(
-                model=reasoning_model,
-                base_url=desktop_url
-            )
-
-        # Writing Model
-        if ":cloud" in writing_model and cloud_url:
-            self.writing_llm = ChatOllama(
-                model=writing_model,
-                base_url=cloud_url,
-                client_kwargs={"headers": {"Authorization": f"Bearer {api_key}"}} if api_key else {}
-            )
-        else:
-            self.writing_llm = ChatOllama(
-                model=writing_model,
-                base_url=desktop_url
-            )
+        self.reasoning_llm = self._init_llm(self.reasoning_model)
+        self.writing_llm = self._init_llm(self.writing_model)
 
         # 2. Context paths
         self.resume_path = "assets/Aschettino, Ava- Resume.docx"
@@ -98,6 +75,23 @@ class AvaGenerator:
         
         # 3. Main Workflow
         self.workflow = self._build_graph()
+        self.langfuse = Langfuse()
+
+    def _init_llm(self, model_name: str, **kwargs) -> ChatOllama:
+        """Initializes ChatOllama with appropriate base URL and auth."""
+        if ":cloud" in model_name and self.cloud_url:
+            return ChatOllama(
+                model=model_name,
+                base_url=self.cloud_url,
+                client_kwargs={"headers": {"Authorization": f"Bearer {self.ollama_api_key}"}} if self.ollama_api_key else {},
+                **kwargs
+            )
+        else:
+            return ChatOllama(
+                model=model_name,
+                base_url=self.desktop_url,
+                **kwargs
+            )
         
     def _load_context(self, path: str) -> str:
         if not os.path.exists(path):
@@ -170,28 +164,34 @@ class AvaGenerator:
                     pass
         return {"raw": text}
 
+    def _get_llm_with_config(self, llm_instance, config: dict):
+        """Re-initializes LLM with parameters from Langfuse config."""
+        model_name = config.get("model", llm_instance.model)
+        
+        params = {}
+        if "temperature" in config:
+            params["temperature"] = float(config["temperature"])
+        if "num_predict" in config:
+            params["num_predict"] = int(config["num_predict"])
+        if "top_p" in config:
+            params["top_p"] = float(config["top_p"])
+            
+        return self._init_llm(model_name, **params)
+
     def _analyze_job(self, state: JobProcessState):
         job = state["job"]
         print(f"--- [Node: Analyze Job] starting for {job.get('company')} ---")
-        prompt = f"""
-        Analyze this job description for Ava Aschettino:
-        Role: {job.get('role')}
-        Company: {job.get('company')}
-        Salary Hint: {job.get('salary', 'N/A')}
-        Description: {job.get('description', 'No description provided')}
-
-        Identify:
-        1. Top 3-4 core requirements.
-        2. Company vibe.
-        3. Primary problem to solve.
-        4. Salary/Pay range. Look closely at the description. If found, format as '$Min - $Max' or similar. 
-           If not found in description but Salary Hint exists and is valid, use Hint.
-           If absolutely no info, return 'Not Listed'.
-
-        Return JSON only: {{"requirements": [], "vibe": "", "problem": "", "salary": ""}}
-        """
         
-        res = self.reasoning_llm.invoke([SystemMessage(content="You are a requirement analyst."), HumanMessage(content=prompt)])
+        prompt_obj = self.langfuse.get_prompt("analyze-job", label="production")
+        compiled_prompt = prompt_obj.compile(
+            role=job.get('role'),
+            company=job.get('company'),
+            salary=job.get('salary', 'N/A'),
+            description=job.get('description', 'No description provided')
+        )
+        
+        llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
+        res = llm.invoke([SystemMessage(content="You are a requirement analyst."), HumanMessage(content=compiled_prompt)])
         analysis = self._parse_json(res.content)
         return {"job_analysis": analysis}
 
@@ -210,9 +210,15 @@ class AvaGenerator:
         analysis = state["job_analysis"]
         resume = state["resume_text"]
         print(f"--- [Node: Map Experience] mapping to STAR evidence ---")
-        prompt = f"Map Ava's experience to requirements: {analysis.get('requirements')}\nResume:\n{resume}\nReturn JSON list of 'mapping' objects: {{\"requirement\": \"...\", \"evidence\": \"...\"}}."
-
-        res = self.reasoning_llm.invoke([SystemMessage(content="You are a career matcher."), HumanMessage(content=prompt)])
+        
+        prompt_obj = self.langfuse.get_prompt("map-experience", label="production")
+        compiled_prompt = prompt_obj.compile(
+            requirements=analysis.get('requirements'),
+            resume=resume
+        )
+        
+        llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
+        res = llm.invoke([SystemMessage(content="You are a career matcher."), HumanMessage(content=compiled_prompt)])
         mapping = self._parse_json(res.content)
         return {"mapped_experience": self._normalize_mapped_experience(mapping)}
 
@@ -224,35 +230,29 @@ class AvaGenerator:
         print(f"--- [Node: Draft Sections] Revision: {state['revision_count']} ---")
         
         # Phase 1: Selection (Resolve Brackets)
-        selection_prompt = (
-            f"Analyze this cover letter template and the candidate's mapping evidence.\n"
-            f"TEMPLATE:\n{template}\n\n"
-            f"EVIDENCE:\n{mapping}\n\n"
-            f"INSTRUCTIONS:\n"
-            f"1. Identify all sections with bracketed options like [A / B / C].\n"
-            f"2. For each, select the SINGLE best option that is supported by the evidence.\n"
-            f"3. Return a clean version of the template with all brackets resolved and all placeholders like [Company Name] filled with '{job.get('company')}'."
+        prompt_obj_sel = self.langfuse.get_prompt("resolve-template", label="production")
+        selection_prompt = prompt_obj_sel.compile(
+            template=template,
+            mapping=mapping,
+            company=job.get('company')
         )
-        selection_res = self.reasoning_llm.invoke([SystemMessage(content="You are a logic engine that resolves template choices."), HumanMessage(content=selection_prompt)])
+        
+        llm_sel = self._get_llm_with_config(self.reasoning_llm, prompt_obj_sel.config)
+        selection_res = llm_sel.invoke([SystemMessage(content="You are a logic engine that resolves template choices."), HumanMessage(content=selection_prompt)])
         resolved_template = selection_res.content
 
         # Phase 2: Writing (Prose Polishing)
-        writing_prompt = (
-            f"Draft a 3-paragraph cover letter using this resolved template as your structure:\n{resolved_template}\n\n"
-            f"CONTEXT:\n"
-            f"- Candidate: Ava Aschettino (EXTERNAL applicant)\n"
-            f"- Target Role: {job.get('role')} at {job.get('company')}\n"
-            f"- Company Vibe: {analysis.get('vibe')}\n\n"
-            f"INSTRUCTIONS:\n"
-            f"1. Adapt the tone to match the Company Vibe (e.g. if luxury, use sophisticated language).\n"
-            f"2. Use ONLY the following evidence for factual claims: {mapping}\n"
-            f"3. MANDATORY: DO NOT include any brackets `[...]` or choices in the final output.\n"
-            f"4. MANDATORY: If you are not 100% confident in a specific claim, wrap it in <verify>...</verify> tags.\n"
-            f"5. CRITICAL: Output ONLY the 3-4 body paragraphs. DO NOT include the header (name, address, contact info, 'Hiring Manager', company name, address), the salutation ('Dear Hiring Manager,'), or the closing ('Sincerely, Ava Aschettino'). The template already contains these elements.\n\n"
-            f"Return ONLY the body paragraphs."
+        prompt_obj_write = self.langfuse.get_prompt("write-cover-letter", label="production")
+        writing_prompt = prompt_obj_write.compile(
+            resolved_template=resolved_template,
+            role=job.get('role'),
+            company=job.get('company'),
+            vibe=analysis.get('vibe'),
+            mapping=mapping
         )
-
-        res = self.writing_llm.invoke([SystemMessage(content="Persuasive career writer with a focus on brand alignment."), HumanMessage(content=writing_prompt)])
+        
+        llm_write = self._get_llm_with_config(self.writing_llm, prompt_obj_write.config)
+        res = llm_write.invoke([SystemMessage(content="Persuasive career writer with a focus on brand alignment."), HumanMessage(content=writing_prompt)])
         return {"final_cover_letter": res.content}
 
     def _verify_accuracy(self, state: JobProcessState):
@@ -261,19 +261,16 @@ class AvaGenerator:
         job = state["job"]
         print(f"--- [Node: Verify Accuracy] cross-referencing claims ---")
         
-        prompt = (
-            f"Analyze this cover letter for factual accuracy against the candidate's resume.\n"
-            f"RESUME GROUND TRUTH:\n{resume}\n\n"
-            f"COVER LETTER:\n{letter}\n\n"
-            f"TARGET JOB: {job.get('role')} at {job.get('company')}\n\n"
-            f"CHECKLIST:\n"
-            f"1. Does the letter claim she currently works at {job.get('company')}? (FAIL if yes)\n"
-            f"2. Are there any roles, dates, or metrics mentioned that are NOT in the resume? (FAIL if yes)\n"
-            f"3. Does it misrepresent her relationship to the target company?\n\n"
-            f"Return JSON: 'status' (PASS/FAIL), 'hallucinations' (list of identified lies/inaccuracies)."
+        prompt_obj = self.langfuse.get_prompt("verify-accuracy", label="production")
+        compiled_prompt = prompt_obj.compile(
+            resume=resume,
+            letter=letter,
+            role=job.get('role'),
+            company=job.get('company')
         )
         
-        res = self.reasoning_llm.invoke([SystemMessage(content="Strict factual auditor."), HumanMessage(content=prompt)])
+        llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
+        res = llm.invoke([SystemMessage(content="Strict factual auditor."), HumanMessage(content=compiled_prompt)])
         report = self._parse_json(res.content)
         return {"accuracy_report": json.dumps(report)}
 
@@ -282,14 +279,14 @@ class AvaGenerator:
         accuracy = state.get("accuracy_report", "{}")
         print(f"--- [Node: Critique Review] round {state['revision_count']} ---")
         
-        prompt = (
-            f"Review this cover letter for NYU/NYC brand, length, and accuracy.\n"
-            f"ACCURACY REPORT: {accuracy}\n"
-            f"LETTER:\n{letter}\n\n"
-            f"If accuracy is 'FAIL' or there are hallucinations, you MUST list them as required improvements.\n"
-            f"If everything is perfect and accurate, return 'EXCELLENT'."
+        prompt_obj = self.langfuse.get_prompt("critique-review", label="production")
+        compiled_prompt = prompt_obj.compile(
+            accuracy=accuracy,
+            letter=letter
         )
-        res = self.reasoning_llm.invoke([SystemMessage(content="Senior hiring editor focused on brand and integrity."), HumanMessage(content=prompt)])
+        
+        llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
+        res = llm.invoke([SystemMessage(content="Senior hiring editor focused on brand and integrity."), HumanMessage(content=compiled_prompt)])
         return {"revision_count": state["revision_count"] + 1, "critique": res.content}
 
     def _finalize_job(self, state: JobProcessState):
@@ -347,8 +344,14 @@ class AvaGenerator:
             if not context:
                 return "New York, NY"
                 
-            prompt = f"Extract only the physical office address for {company_name} from this text. If multiple, pick the NYC one if present, otherwise HQ. Return ONLY the address string: {context}"
-            res = self.reasoning_llm.invoke([SystemMessage(content="Address extractor."), HumanMessage(content=prompt)])
+            prompt_obj = self.langfuse.get_prompt("extract-address", label="production")
+            compiled_prompt = prompt_obj.compile(
+                company_name=company_name,
+                context=context
+            )
+            
+            llm = self._get_llm_with_config(self.reasoning_llm, prompt_obj.config)
+            res = llm.invoke([SystemMessage(content="Address extractor."), HumanMessage(content=compiled_prompt)])
             return res.content.strip()
         except Exception as e:
             logger.error(f"Address lookup failed: {e}")
