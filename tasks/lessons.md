@@ -23,3 +23,4 @@
 
 ## Tooling & Observability
 - **GitNexus Initialization**: Use `gitnexus analyze --embeddings --skills .` to establish the knowledge graph for a new repository. Verify via `gitnexus status` and the `list_repos` MCP tool.
+- **ChatOllama Params**: In the current version of `langchain-ollama`, `llm.bind(temperature=...)` can cause a `TypeError` in the underlying `Client.chat` call. To apply prompt-specific configurations (e.g., from Langfuse), re-instantiate the `ChatOllama` model with the desired parameters in the constructor instead of using `.bind()`.
