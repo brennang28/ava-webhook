@@ -6,6 +6,7 @@ from operator import add
 from pydantic import BaseModel, Field
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
+from langfuse import Langfuse
 from langgraph.graph import StateGraph, START, END
 from dotenv import load_dotenv
 
@@ -65,31 +66,47 @@ class AvaScout:
                 logger.error(f"Error loading config in scout: {e}")
         
         models_config = self.config.get("models", {})
-        scouting_model = models_config.get("scouting", "gemma4:31b")
+        self.scouting_model = models_config.get("scouting", "gemma4:31b")
         
         self.db_path = db_path
-        api_key = os.getenv("OLLAMA_AUX2_API_KEY")
-        base_url = os.getenv("OLLAMA_CLOUD_URL", "https://ollama.com")
+        self.ollama_api_key = os.getenv("OLLAMA_AUX2_API_KEY")
+        self.cloud_url = os.getenv("OLLAMA_CLOUD_URL", "https://ollama.com")
+        self.desktop_url = os.getenv("DESKTOP_OLLAMA_URL", "http://127.0.0.1:11434")
+
+        # Initial default LLM
+        self.llm = self._init_llm(self.scouting_model)
+        self.structured_llm = self.llm.with_structured_output(RankingResult)
         
-        if api_key:
-            logger.info(f"Using Ollama Cloud ({scouting_model})")
-            # For Ollama Cloud, we pass the API key in the headers
-            self.llm = ChatOllama(
-                model=scouting_model,
-                base_url=base_url,
-                client_kwargs={"headers": {"Authorization": f"Bearer {api_key}"}}
+        self.workflow = self._build_graph()
+        self.langfuse = Langfuse()
+
+    def _init_llm(self, model_name: str, **kwargs) -> ChatOllama:
+        """Initializes ChatOllama with appropriate base URL and auth."""
+        if self.ollama_api_key:
+            return ChatOllama(
+                model=model_name,
+                base_url=self.cloud_url,
+                client_kwargs={"headers": {"Authorization": f"Bearer {self.ollama_api_key}"}},
+                **kwargs
             )
         else:
-            # Fallback to local desktop
-            desktop_url = os.getenv("DESKTOP_OLLAMA_URL", "http://127.0.0.1:11434")
-            logger.warning(f"No OLLAMA_API_KEY found. Falling back to local: {desktop_url}")
-            self.llm = ChatOllama(
+            return ChatOllama(
                 model="llama3.2:3b", # Smaller model for local dev
-                base_url=desktop_url
+                base_url=self.desktop_url,
+                **kwargs
             )
+
+    def _get_llm_with_config(self, model_name: str, config: dict):
+        """Returns a ChatOllama instance with parameters from Langfuse config."""
+        params = {}
+        if "temperature" in config:
+            params["temperature"] = float(config["temperature"])
+        if "num_predict" in config:
+            params["num_predict"] = int(config["num_predict"])
+        if "top_p" in config:
+            params["top_p"] = float(config["top_p"])
             
-        self.structured_llm = self.llm.with_structured_output(RankingResult)
-        self.workflow = self._build_graph()
+        return self._init_llm(model_name, **params)
 
     def _build_graph(self) -> StateGraph:
         builder = StateGraph(ScoutState)
@@ -228,19 +245,34 @@ CRITICAL INDUSTRY REJECTION (Score 0):
             for idx, job in enumerate(batch):
                 job_list_str += f"[{idx}] Role: {job.get('role')} | Company: {job.get('company')} | Link: {job.get('link')}\n"
             
-            system_msg = SystemMessage(content=f"""You are an expert recruitment agent. 
-Rank the provided jobs by relevance to the candidate profile. 
-CRITICAL CONSTRAINTS:
-1. Experience: Only select roles for 0-2 years of experience. If a role clearly requires 3+, 5+, or senior experience, give it a score of 0.
-2. Role Type: Only select permanent roles. Give a score of 0 to any Internships, Temporary roles, or Contract positions.
-2. Return Format: You MUST return a JSON object with a single key "scores" containing a list of job scores.
-Example: {{"scores": [{{"job_index": 0, "score": 85, "reason": "..."}}]}}
-Do not include any preamble or extra text.
-Assign a score from 0-100 for each job based on the profile and success patterns provided.""")
-            human_msg = HumanMessage(content=f"{profile_context}\n\nJOB LIST TO RANK:\n{job_list_str}\n\nAssign a score to each of the {len(batch)} jobs above.")
+            # Fetch prompts from Langfuse
+            prompt_obj_sys = self.langfuse.get_prompt("score-jobs-system", label="production")
+            prompt_obj_human = self.langfuse.get_prompt("score-jobs", label="production")
+            
+            system_msg_content = prompt_obj_sys.compile()
+            human_msg_content = prompt_obj_human.compile(
+                name=profile.get('name'),
+                target_titles=', '.join(profile.get('target_titles', [])),
+                industries_of_interest=', '.join(profile.get('industries_of_interest', [])),
+                summary=profile.get('professional_summary'),
+                experience=profile.get('experience_level'),
+                industry_affinity=json.dumps(profile.get('industry_affinity_scores', {}), indent=2),
+                pattern_context=pattern_context,
+                history_summary=history_summary,
+                boost_for='; '.join(profile.get('scoring_guidance', {}).get('boost_for', [])),
+                penalize_for='; '.join(profile.get('scoring_guidance', {}).get('penalize_for', [])),
+                job_list_str=job_list_str
+            )
+
+            system_msg = SystemMessage(content=system_msg_content)
+            human_msg = HumanMessage(content=human_msg_content)
+            
+            # Create a structured LLM with config from Langfuse (system prompt config)
+            llm = self._get_llm_with_config(self.scouting_model, prompt_obj_sys.config)
+            structured_llm = llm.with_structured_output(RankingResult)
             
             try:
-                result = self.structured_llm.invoke([system_msg, human_msg])
+                result = structured_llm.invoke([system_msg, human_msg])
                 # Map scores back to job objects
                 for score_item in result.scores:
                     if 0 <= score_item.job_index < len(batch):
