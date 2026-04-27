@@ -67,7 +67,7 @@ class AvaGenerator:
             self.reasoning_llm = ChatOllama(
                 model=reasoning_model,
                 base_url=cloud_url,
-                headers={"Authorization": f"Bearer {api_key}"} if api_key else {}
+                client_kwargs={"headers": {"Authorization": f"Bearer {api_key}"}} if api_key else {}
             )
         else:
             self.reasoning_llm = ChatOllama(
@@ -80,7 +80,7 @@ class AvaGenerator:
             self.writing_llm = ChatOllama(
                 model=writing_model,
                 base_url=cloud_url,
-                headers={"Authorization": f"Bearer {api_key}"} if api_key else {}
+                client_kwargs={"headers": {"Authorization": f"Bearer {api_key}"}} if api_key else {}
             )
         else:
             self.writing_llm = ChatOllama(

@@ -29,3 +29,4 @@ assets/*.docx
 
 # Keep scripts and research (except data if sensitive)
 # research/data/ is included by default unless specifically ignored
+.gitnexus

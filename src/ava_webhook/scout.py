@@ -77,7 +77,7 @@ class AvaScout:
             self.llm = ChatOllama(
                 model=scouting_model,
                 base_url=base_url,
-                headers={"Authorization": f"Bearer {api_key}"}
+                client_kwargs={"headers": {"Authorization": f"Bearer {api_key}"}}
             )
         else:
             # Fallback to local desktop
