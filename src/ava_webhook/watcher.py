@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from jobspy import scrape_jobs
+from langfuse import Langfuse, propagate_attributes
 from .scout import AvaScout
 from .generator import AvaGenerator
 from playwright.sync_api import sync_playwright
@@ -37,11 +38,16 @@ class AvaWatcher:
         with open(config_path, 'r') as f:
             self.config = json.load(f)
         self.db_path = db_path
+        self.run_session_id = self._generate_run_session_id()
         self.session_seen = set()
         self.applied_history_set = self._load_applied_history()
         self.playwright = None
         self.browser = None
         self._init_db()
+
+    def _generate_run_session_id(self):
+        """Generate a unique session ID for the current scheduled run."""
+        return datetime.now().strftime("scheduled-run-%Y-%m-%d-%H-%M")
 
     def _get_browser(self):
         if not self.browser:
@@ -541,30 +547,39 @@ class AvaWatcher:
             return
 
         logger.info(f"Total pool for ranking: {len(dedup_pool)} jobs")
-        
-        scout = AvaScout()
-        generator = AvaGenerator()
-        try:
-            top_jobs = scout.rank(dedup_pool, limit=25)
-            logger.info(f"Scout selected {len(top_jobs)} relevant opportunities. Starting fulfillment...")
-            
-            # Use generator to handle document creation and webhook dispatch
-            generator.workflow.invoke({"jobs": top_jobs, "results": []})
-            
-            # Save to local DB for tracking
-            for job in top_jobs:
-                db_id = job.get('id') or job.get('link')
-                self.save_job(db_id, job['role'], job['company'])
-                
-        except Exception as e:
-            logger.error(f"Fulfillment pipeline failed: {e}")
-            logger.info("Falling back to basic dispatch for first 1 jobs.")
-            for job in dedup_pool[:1]:
-                self.dispatch(job)
-                db_id = job.get('id') or job.get('link')
-                role = job.get('role') or job.get('title') or 'Position'
-                company = job.get('company', 'Unknown')
-                self.save_job(db_id, role, company)
+        logger.info(f"Starting run session: {self.run_session_id}")
+
+        langfuse_client = Langfuse()
+        with langfuse_client.start_as_current_observation(
+            name=f"scheduled-run-{self.run_session_id}",
+            as_type="span",
+        ):
+            with propagate_attributes(session_id=self.run_session_id):
+                scout = AvaScout()
+                generator = AvaGenerator()
+                try:
+                    top_jobs = scout.rank(dedup_pool, limit=25)
+                    logger.info(f"Scout selected {len(top_jobs)} relevant opportunities. Starting fulfillment...")
+                    
+                    # Use generator to handle document creation and webhook dispatch
+                    generator.workflow.invoke({"jobs": top_jobs, "results": []})
+                    
+                    # Save to local DB for tracking
+                    for job in top_jobs:
+                        job['run_session_id'] = self.run_session_id
+                        db_id = job.get('id') or job.get('link')
+                        self.save_job(db_id, job['role'], job['company'])
+                        
+                except Exception as e:
+                    logger.error(f"Fulfillment pipeline failed: {e}")
+                    logger.info("Falling back to basic dispatch for first 1 jobs.")
+                    for job in dedup_pool[:1]:
+                        job['run_session_id'] = self.run_session_id
+                        self.dispatch(job)
+                        db_id = job.get('id') or job.get('link')
+                        role = job.get('role') or job.get('title') or 'Position'
+                        company = job.get('company', 'Unknown')
+                        self.save_job(db_id, role, company)
 
 if __name__ == "__main__":
     watcher = AvaWatcher()
