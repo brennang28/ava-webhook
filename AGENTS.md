@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **ava-webhook** (390 symbols, 829 relationships, 24 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **ava-webhook** (429 symbols, 909 relationships, 27 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -97,8 +97,5 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
 | Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-| Work in the Ava_webhook area (52 symbols) | `.claude/skills/generated/ava-webhook/SKILL.md` |
-| Work in the Tests area (31 symbols) | `.claude/skills/generated/tests/SKILL.md` |
-| Work in the Scratch area (14 symbols) | `.claude/skills/generated/scratch/SKILL.md` |
 
 <!-- gitnexus:end -->
