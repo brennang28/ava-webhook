@@ -1,4 +1,5 @@
 from ava_webhook.generator import AvaGenerator
+from google.auth.exceptions import RefreshError
 import pytest
 import requests
 import os
@@ -93,6 +94,104 @@ def test_upload_to_drive_traces_tool_observation(monkeypatch, tmp_path):
     assert obs.output["cover_letter_uploaded"] is False
     assert obs.output["resume_uploaded"] is False
     assert obs.output["error"] == "token.json missing"
+
+
+def test_upload_to_drive_refreshes_expired_token(monkeypatch, tmp_path):
+    class DummyObservation:
+        def __init__(self):
+            self.output = None
+        def update(self, *, output=None, **kwargs):
+            self.output = output
+
+    class DummyContext:
+        def __init__(self, observation):
+            self.observation = observation
+        def __enter__(self):
+            return self.observation
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    refreshed = False
+
+    def mock_with_tool_observation(self, name, input_data):
+        return DummyContext(DummyObservation())
+
+    class FakeCreds:
+        def __init__(self):
+            self.valid = False
+            self.expired = True
+            self.refresh_token = 'refresh-token'
+        def refresh(self, request):
+            nonlocal refreshed
+            refreshed = True
+            self.valid = True
+            self.expired = False
+        def to_json(self):
+            return '{"refreshed": true}'
+
+    class FakeFiles:
+        def create(self, body, media_body=None, fields=None):
+            class FakeRequest:
+                def execute(self):
+                    return {'id': 'fake-id', 'webViewLink': 'https://drive.fake/folder'}
+            return FakeRequest()
+
+    class FakeDriveService:
+        def files(self):
+            return FakeFiles()
+
+    monkeypatch.setattr(AvaGenerator, "_with_tool_observation", mock_with_tool_observation)
+    monkeypatch.setattr('ava_webhook.generator.Credentials.from_authorized_user_file', lambda path, scopes: FakeCreds())
+    monkeypatch.setattr('ava_webhook.generator.build', lambda service, version, credentials=None: FakeDriveService())
+
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath('token.json').write_text('{}')
+
+    gen = AvaGenerator()
+    result = gen._upload_to_drive("TestCo", "Engineer", io.BytesIO(b"cov"), io.BytesIO(b"res"))
+
+    assert refreshed is True
+    assert 'https://drive.fake/folder' in result
+    assert tmp_path.joinpath('token.json').read_text() == '{"refreshed": true}'
+
+
+def test_upload_to_drive_refresh_error_returns_local_only(monkeypatch, tmp_path):
+    class DummyObservation:
+        def __init__(self):
+            self.output = None
+        def update(self, *, output=None, **kwargs):
+            self.output = output
+
+    class DummyContext:
+        def __init__(self, observation):
+            self.observation = observation
+        def __enter__(self):
+            return self.observation
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def mock_with_tool_observation(self, name, input_data):
+        return DummyContext(DummyObservation())
+
+    class FakeCreds:
+        def __init__(self):
+            self.valid = False
+            self.expired = True
+            self.refresh_token = 'refresh-token'
+        def refresh(self, request):
+            raise RefreshError('invalid_grant: Token has been expired or revoked.')
+
+    monkeypatch.setattr(AvaGenerator, "_with_tool_observation", mock_with_tool_observation)
+    monkeypatch.setattr('ava_webhook.generator.Credentials.from_authorized_user_file', lambda path, scopes: FakeCreds())
+
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath('token.json').write_text('{}')
+
+    gen = AvaGenerator()
+    result = gen._upload_to_drive("TestCo", "Engineer", io.BytesIO(b"cov"), io.BytesIO(b"res"))
+
+    assert "Drive auth failed" in result
+    assert "setup_oauth.py" in result
 
 
 def test_run_drive_step_observation(monkeypatch):

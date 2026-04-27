@@ -14,6 +14,8 @@ from langchain_ollama import ChatOllama
 from langfuse import Langfuse
 from langchain_core.messages import SystemMessage, HumanMessage
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 from dotenv import load_dotenv
@@ -614,6 +616,27 @@ class AvaGenerator:
 
             try:
                 creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/drive.file'])
+                if not creds.valid:
+                    if creds.expired and creds.refresh_token:
+                        try:
+                            creds.refresh(Request())
+                            with open(token_path, 'w') as token_file:
+                                token_file.write(creds.to_json())
+                        except RefreshError as refresh_error:
+                            upload_result["error"] = f"Drive auth refresh failed: {refresh_error}"
+                            observation.update(output=upload_result)
+                            return (
+                                "Saved locally! Drive auth failed: token expired or revoked. "
+                                "Please rerun scripts/setup_oauth.py to reauthorize."
+                            )
+                    else:
+                        upload_result["error"] = "Drive credentials invalid or expired with no refresh token"
+                        observation.update(output=upload_result)
+                        return (
+                            "Saved locally! Drive auth failed: invalid or expired token. "
+                            "Please rerun scripts/setup_oauth.py to reauthorize."
+                        )
+
                 drive_service = build('drive', 'v3', credentials=creds)
 
                 folder_metadata = {
