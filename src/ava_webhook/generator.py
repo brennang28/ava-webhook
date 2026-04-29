@@ -182,6 +182,11 @@ class AvaGenerator:
             params["num_predict"] = int(config["num_predict"])
         if "top_p" in config:
             params["top_p"] = float(config["top_p"])
+        if "num_ctx" in config:
+            params["num_ctx"] = int(config["num_ctx"])
+        else:
+            # Provide a safe fallback for our large prompts
+            params["num_ctx"] = 16384
             
         return self._init_llm(model_name, **params)
 
