@@ -9,7 +9,7 @@ def extract_text(filename):
     return '\n'.join(fullText)
 
 # Project paths
-project_dir = "/home/brenn/ava-webhook"
+project_dir = "/home/brenn/dev/ava-webhook"
 scratch_dir = os.path.join(project_dir, "scratch")
 os.makedirs(scratch_dir, exist_ok=True)
 
