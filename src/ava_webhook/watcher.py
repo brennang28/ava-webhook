@@ -131,7 +131,7 @@ class AvaWatcher:
         norm_id = self._normalize_url(job_id)
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("INSERT OR REPLACE INTO jobs (job_id, title, company, date_found) VALUES (?, ?, ?, ?)",
-                         (norm_id, title, company, datetime.now()))
+                         (norm_id, title, company, datetime.now().isoformat()))
 
 
     def dispatch(self, job):
