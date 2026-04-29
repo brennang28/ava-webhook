@@ -5,6 +5,7 @@ import json
 import re
 import time
 import io
+import copy
 import logging
 from typing import Annotated, TypedDict, List, Dict, Any
 from docx import Document
@@ -497,8 +498,17 @@ class AvaGenerator:
                     if text.strip():
                         closing_texts.append(text)
 
+            template_p_element = None
+            parent_element = None
+            from docx.text.paragraph import Paragraph
+
             if salutation_idx != -1:
                 body_start = salutation_idx + 1
+                if len(doc.paragraphs) > body_start:
+                    template_p_element = copy.deepcopy(doc.paragraphs[body_start]._element)
+                    template_p_element.clear_content()
+                    parent_element = doc.paragraphs[salutation_idx]._element.getparent()
+
                 while len(doc.paragraphs) > body_start:
                     p = doc.paragraphs[body_start]
                     p._element.getparent().remove(p._element)
@@ -532,8 +542,14 @@ class AvaGenerator:
             # 5. Append new body content with paragraph spacing
             for line in content.split("\n"):
                 if line.strip() and not _is_header_line(line):
-                    p = doc.add_paragraph()
-                    p.paragraph_format.space_after = Pt(12)
+                    if template_p_element is not None and parent_element is not None:
+                        new_p_element = copy.deepcopy(template_p_element)
+                        parent_element.append(new_p_element)
+                        p = Paragraph(new_p_element, doc)
+                    else:
+                        p = doc.add_paragraph()
+                        p.paragraph_format.space_after = Pt(12)
+
                     # Parse <verify> tags for red-highlighting
                     parts = re.split(r'(<verify>.*?</verify>)', line)
                     for part in parts:
@@ -547,8 +563,13 @@ class AvaGenerator:
             # 6. Add back closing paragraphs
             for closing_text in closing_texts:
                 if closing_text.strip():
-                    p = doc.add_paragraph()
-                    p.paragraph_format.space_after = Pt(12)
+                    if template_p_element is not None and parent_element is not None:
+                        new_p_element = copy.deepcopy(template_p_element)
+                        parent_element.append(new_p_element)
+                        p = Paragraph(new_p_element, doc)
+                    else:
+                        p = doc.add_paragraph()
+                        p.paragraph_format.space_after = Pt(12)
                     p.add_run(closing_text)
         else:
             header_limit = 3

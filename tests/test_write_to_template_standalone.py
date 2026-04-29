@@ -36,6 +36,12 @@ sys.modules['langchain_core.messages'].HumanMessage = lambda **k: None
 # Stub google auth
 sys.modules['google.oauth2.credentials'] = FakeModule()
 sys.modules['google.oauth2.credentials'].Credentials = FakeModule()
+sys.modules['google.auth'] = FakeModule()
+sys.modules['google.auth.transport'] = FakeModule()
+sys.modules['google.auth.transport.requests'] = FakeModule()
+sys.modules['google.auth.transport.requests'].Request = lambda *a, **k: None
+sys.modules['google.auth.exceptions'] = FakeModule()
+sys.modules['google.auth.exceptions'].RefreshError = Exception
 sys.modules['googleapiclient.discovery'] = FakeModule()
 sys.modules['googleapiclient.discovery'].build = lambda *a, **k: None
 sys.modules['googleapiclient.http'] = FakeModule()
